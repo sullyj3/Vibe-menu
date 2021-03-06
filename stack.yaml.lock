@@ -5,16 +5,16 @@
 
 packages:
 - completed:
-    size: 11956
-    url: https://github.com/sullyj3/buttplug-hs-core/archive/0cbec31e7dfb3f447d98e8d6a828b4b5c1e7cd37.tar.gz
+    size: 12686
+    url: https://github.com/sullyj3/buttplug-hs-core/archive/36ca3f5eed9791c7de1af25d9efdb4f3c3278039.tar.gz
     name: buttplug-hs-core
     version: 0.1.0.0
-    sha256: 36e7efc8e7c29202fc9f19e81ce0b5433a1b856a33a2ae18d3ea212c52c7597a
+    sha256: a24116e5a06924e6a42e47333eb019952050473d8d3e670da46ad3eb980bda63
     pantry-tree:
       size: 968
-      sha256: 1d2aeb5740eff15e42ca60217678b2cb768c9d232dcdb9761cf5a83c4d959b71
+      sha256: 224b5d29cc909439e0aa0e20c62b382e45d9426b6911a7f1f1873d4707ad9929
   original:
-    url: https://github.com/sullyj3/buttplug-hs-core/archive/0cbec31e7dfb3f447d98e8d6a828b4b5c1e7cd37.tar.gz
+    url: https://github.com/sullyj3/buttplug-hs-core/archive/36ca3f5eed9791c7de1af25d9efdb4f3c3278039.tar.gz
 snapshots:
 - completed:
     size: 565266
