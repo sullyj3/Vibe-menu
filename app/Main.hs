@@ -79,6 +79,7 @@ theMap = attrMap V.defAttr
   , (E.editFocusedAttr, V.black `on` V.yellow)
   , (invalidFormInputAttr, V.white `on` V.red)
   , (focusedFormInputAttr, V.black `on` V.yellow)
+  , ("header", V.black `on` V.white)
   ]
 
 drawConnectScreen :: Form HostPort e ConnectScreenName -> [Widget ConnectScreenName]
@@ -118,8 +119,11 @@ data VibeMenuName = VibeMenuName
 data CustomEvent = ReceivedMessage Message
 
 drawVibeMenu s = [ ui ]
-  where title = padBottom (Pad 1) $ txt "VibeMenu"
-        receivedMsgLog = padBottom (Pad 1) $ vBox $ map (txt . T.pack . show) $ s ^. messageLog
+  where title = padBottom (Pad 1) $ withAttr "header" $ txtWrap "VibeMenu"
+        receivedMsgLog =
+          (withAttr "header" $ txtWrap "Message log")
+          <=>
+          (padBottom (Pad 1) $ vBox $ map (txt . T.pack . show) $ s ^. messageLog)
         ui = title
              <=>
              receivedMsgLog
