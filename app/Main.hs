@@ -153,9 +153,8 @@ vibeMenu =
                 VtyEvent (V.EvResize {})     -> continue s
                 VtyEvent (V.EvKey V.KEsc [])   -> halt s
                 VtyEvent (V.EvKey V.KEnter []) -> continue s -- TODO
-                VtyEvent e -> do
-                  l' <- L.handleListEvent e (s ^. messageLog)
-                  continue (s & messageLog .~ l')
+                VtyEvent e -> handleEventLensed s messageLog L.handleListEvent e
+                  >>= continue
                 AppEvent (ReceivedMessage msg) -> do
                   let len = s ^. messageLog & length
                   continue $ s & messageLog %~ (L.listInsert len msg)
