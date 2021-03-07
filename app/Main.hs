@@ -5,7 +5,7 @@
 module Main where
 
 import qualified Data.Text as T
-import Lens.Micro ((^.), (&), (%~))
+import Lens.Micro ((^.), (&), (%~), (.~))
 import Lens.Micro.TH
 import Control.Monad (forever)
 import Data.Foldable (traverse_)
@@ -153,11 +153,14 @@ vibeMenu =
                 VtyEvent (V.EvResize {})     -> continue s
                 VtyEvent (V.EvKey V.KEsc [])   -> halt s
                 VtyEvent (V.EvKey V.KEnter []) -> continue s -- TODO
+                VtyEvent e -> do
+                  l' <- L.handleListEvent e (s ^. messageLog)
+                  continue (s & messageLog .~ l')
                 AppEvent (ReceivedMessage msg) -> do
                   let len = s ^. messageLog & length
                   continue $ s & messageLog %~ (L.listInsert len msg)
-                _ -> do
-                  continue s -- TODO
+                _ -> continue s
+
         , appChooseCursor = neverShowCursor -- TODO
         , appStartEvent = return
         , appAttrMap = const theMap
