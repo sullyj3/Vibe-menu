@@ -42,7 +42,7 @@ packages:
 #
 extra-deps:
 - github: sullyj3/buttplug-hs-core
-  commit: 36ca3f5eed9791c7de1af25d9efdb4f3c3278039
+  commit: 2e927909a5b883eb5ab2409a101b0c6a952e55a2
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

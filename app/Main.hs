@@ -10,6 +10,7 @@ import Lens.Micro.TH
 import Control.Monad (forever)
 import Data.Foldable (traverse_)
 import System.Environment
+import System.Exit (exitFailure)
 
 import qualified Graphics.Vty as V
 import Brick
@@ -36,7 +37,7 @@ import Brick.Focus
   ( focusGetCurrent
   , focusRingCursor
   )
-import Brick.BChan 
+import Brick.BChan
   ( newBChan
   , writeBChan
   , readBChan
@@ -46,7 +47,7 @@ import qualified Brick.Widgets.Edit as E
 import qualified Brick.Widgets.Border as B
 import qualified Brick.Widgets.Center as C
 
-import Buttplug
+import Buttplug.Core
 import Control.Concurrent.Async
 
 data ConnectScreenName = HostField
@@ -97,7 +98,7 @@ connectScreen =
                     s' <- handleFormEvent ev s
 
                     -- Example of external validation:
-                    continue $ setFieldValid 
+                    continue $ setFieldValid
                       ((formState s')^.port >= 0) PortField s'
 
         , appChooseCursor = focusRingCursor formFocus
@@ -105,7 +106,7 @@ connectScreen =
         , appAttrMap = const theMap
         }
 
-data VibeMenuState = 
+data VibeMenuState =
   VMSt { _messageLog :: [Message] -- TODO replace with list for scrolling
        }
 
@@ -142,46 +143,55 @@ vibeMenu =
         , appAttrMap = const theMap
         }
 
-main :: IO ()
-main = do
+getHostPort :: IO (String, Int, V.Vty)
+getHostPort = do
     args <- getArgs
     -- TODO bypass connect screen if host provided
-    let showConnectScreen = case args of
-          ["-c"] -> True
-          _      -> False
-
-    let buildVty = do
-          v <- V.mkVty =<< V.standardIOConfig
-          V.setMode (V.outputIface v) V.Mouse True
-          return v
-
-        initialHostPort = HostPort "localhost" 12345
-
-        connectForm = setFieldValid True PortField $
-            mkForm initialHostPort
 
     initialVty <- buildVty
-    (connectForm', vty') <- customMainWithVty
-      initialVty buildVty Nothing connectScreen connectForm
-    if allFieldsValid connectForm'
-       then putStrLn "The final form inputs were valid."
-       else putStrLn $ "The final form had invalid inputs: " <>
-        show (invalidFields connectForm')
+    case args of
+      [host, port] -> pure (host, read port, initialVty)
+      _      -> do
+        let connectForm = setFieldValid True PortField $
+              mkForm initialHostPort
+            initialHostPort = HostPort "localhost" 12345
 
-    let HostPort host port = formState connectForm'
-        host' = T.unpack host
-        connector = InsecureWebSocketConnector host' port
+        (connectForm', vty') <- customMainWithVty
+          initialVty buildVty Nothing connectScreen connectForm
+        if allFieldsValid connectForm'
+           then do
+             putStrLn "The final form inputs were valid."
+             let HostPort host port = formState connectForm' 
+             pure (T.unpack host, port, vty')
+           else do 
+             putStrLn $ "The final form had invalid inputs: " <>
+               show (invalidFields connectForm')
+             exitFailure
+
+buildVty = do
+      v <- V.mkVty =<< V.standardIOConfig
+      V.setMode (V.outputIface v) V.Mouse True
+      return v
+
+main :: IO ()
+main = do
+
+    (host, port, vty) <- getHostPort
+
+    let --HostPort host port = formState connectForm'
+        connector = InsecureWebSocketConnector host port
         initialState = VMSt []
 
 
-    putStrLn $ "Connecting to: " <> host' <> ":" <> show port
+    putStrLn $ "Connecting to: " <> host <> ":" <> show port
     runClient connector \con -> do
       putStrLn "connected!"
       msgChan <- newBChan 10 -- tweak chan capacity
       race_
         (handleMsgs con msgChan)
-        (customMain vty' buildVty (Just msgChan) vibeMenu initialState)
+        (customMain vty buildVty (Just msgChan) vibeMenu initialState)
       pure ()
+
 
 handleMsgs :: Connection WebSocketConnector -> BChan CustomEvent -> IO ()
 handleMsgs con msgChan = do
