@@ -44,8 +44,10 @@ import Brick.BChan
   , BChan
   )
 import qualified Brick.Widgets.Edit as E
+import qualified Brick.Widgets.List as L
 import qualified Brick.Widgets.Border as B
 import qualified Brick.Widgets.Center as C
+import qualified Brick.AttrMap as A
 
 import Buttplug.Core
 import Control.Concurrent.Async
@@ -73,6 +75,9 @@ mkForm =
                    editShowableField port PortField
                ]
 
+customAttr :: A.AttrName
+customAttr = L.listSelectedAttr <> "custom"
+
 theMap :: AttrMap
 theMap = attrMap V.defAttr
   [ (E.editAttr, V.white `on` V.black)
@@ -80,6 +85,9 @@ theMap = attrMap V.defAttr
   , (invalidFormInputAttr, V.white `on` V.red)
   , (focusedFormInputAttr, V.black `on` V.yellow)
   , ("header", V.black `on` V.white)
+  , (L.listAttr,            V.white `on` V.black)
+  , (L.listSelectedAttr,    V.blue `on` V.black)
+  , (customAttr,            fg V.cyan)
   ]
 
 drawConnectScreen :: Form HostPort e ConnectScreenName -> [Widget ConnectScreenName]
@@ -107,14 +115,15 @@ connectScreen =
         , appAttrMap = const theMap
         }
 
+data VibeMenuName = MessageLog
+  deriving (Eq, Ord, Show)
+
 data VibeMenuState =
-  VMSt { _messageLog :: [Message] -- TODO replace with list for scrolling
+  VMSt { _messageLog :: L.List VibeMenuName Message -- TODO replace with list for scrolling
        }
 
 makeLenses ''VibeMenuState
 
-data VibeMenuName = VibeMenuName
-  deriving (Eq, Ord, Show)
 
 data CustomEvent = ReceivedMessage Message
 
@@ -123,10 +132,17 @@ drawVibeMenu s = [ ui ]
         receivedMsgLog =
           (withAttr "header" $ txtWrap "Message log")
           <=>
-          (padBottom (Pad 1) $ vBox $ map (txt . T.pack . show) $ s ^. messageLog)
+          (padBottom (Pad 1) $ (L.renderList listDrawElement True $ s ^. messageLog))
         ui = title
              <=>
              receivedMsgLog
+
+listDrawElement :: (Show e) => Bool -> e -> Widget VibeMenuName
+listDrawElement sel a =
+    let selStr s = if sel
+                   then withAttr customAttr (str $ "<" <> s <> ">")
+                   else str s
+    in (selStr $ show a)
 
 vibeMenu :: App VibeMenuState CustomEvent VibeMenuName
 vibeMenu =
@@ -136,8 +152,9 @@ vibeMenu =
                 VtyEvent (V.EvResize {})     -> continue s
                 VtyEvent (V.EvKey V.KEsc [])   -> halt s
                 VtyEvent (V.EvKey V.KEnter []) -> continue s -- TODO
-                AppEvent (ReceivedMessage msg) ->
-                  continue $ s & messageLog %~ (msg:)
+                AppEvent (ReceivedMessage msg) -> do
+                  let len = s ^. messageLog & length
+                  continue $ s & messageLog %~ (L.listInsert len msg)
                 _ -> do
                   continue s -- TODO
 
@@ -184,7 +201,7 @@ main = do
 
     let --HostPort host port = formState connectForm'
         connector = InsecureWebSocketConnector host port
-        initialState = VMSt []
+        initialState = VMSt (L.list MessageLog mempty 1)
 
 
     putStrLn $ "Connecting to: " <> host <> ":" <> show port
