@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 230b46713bd66a91dff5bc61ba7ca27994ae18b3dbfb749ed1f6e21c51457267
+-- hash: 6f22f643d6e5ad6bb2172bc12c3502db1b7cfe12c0b4671e98d13c699fda4373
 
 name:           vibe-menu
 version:        0.1.0.0
@@ -39,6 +39,7 @@ library
     , buttplug-hs-core
     , microlens
     , microlens-th
+    , process
     , text
     , vty
   default-language: Haskell2010
@@ -57,6 +58,7 @@ executable vibe-menu-exe
     , buttplug-hs-core
     , microlens
     , microlens-th
+    , process
     , text
     , vibe-menu
     , vty
@@ -77,6 +79,7 @@ test-suite vibe-menu-test
     , buttplug-hs-core
     , microlens
     , microlens-th
+    , process
     , text
     , vibe-menu
     , vty

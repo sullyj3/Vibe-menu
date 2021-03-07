@@ -28,6 +28,7 @@ dependencies:
 - vty
 - microlens
 - microlens-th
+- process
 
 library:
   source-dirs: src

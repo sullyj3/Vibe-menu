@@ -11,6 +11,7 @@ import Control.Monad (forever)
 import Data.Foldable (traverse_)
 import System.Environment
 import System.Exit (exitFailure)
+import System.Process
 
 import qualified Graphics.Vty as V
 import Brick
@@ -157,8 +158,6 @@ vibeMenu =
                   continue $ s & messageLog %~ (L.listInsert len msg)
                 _ -> do
                   continue s -- TODO
-
-
         , appChooseCursor = neverShowCursor -- TODO
         , appStartEvent = return
         , appAttrMap = const theMap
@@ -167,15 +166,16 @@ vibeMenu =
 getHostPort :: IO (String, Int, V.Vty)
 getHostPort = do
     args <- getArgs
-    -- TODO bypass connect screen if host provided
-
     initialVty <- buildVty
     case args of
       [host, port] -> pure (host, read port, initialVty)
       _      -> do
+
+        initialHost <-
+          (<> ".local") . T.strip . T.pack <$> readProcess "hostname" [] ""
         let connectForm = setFieldValid True PortField $
               mkForm initialHostPort
-            initialHostPort = HostPort "localhost" 12345
+            initialHostPort = HostPort initialHost 12345
 
         (connectForm', vty') <- customMainWithVty
           initialVty buildVty Nothing connectScreen connectForm
