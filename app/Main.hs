@@ -260,21 +260,19 @@ main = do
 
 handleMsgs :: Connection WebSocketConnector -> BChan CustomEvent -> IO ()
 handleMsgs con evChan = do
-  -- initial setup - handshake, get connected devices, and start scanning
-  sendMessage con $ RequestServerInfo 1 "VibeMenu" 2
+  -- block while we perform handshake
+  sendMessage con $ RequestServerInfo 1 "VibeMenu" clientMessageVersion
   [servInfo@(ServerInfo 1 _ _ _)] <- receiveMsgs con
   writeBChan evChan $ ReceivedMessage servInfo
 
-  sendMessage con $ RequestDeviceList 2
-  [devList@(DeviceList 2 devices)] <- receiveMsgs con
-  writeBChan evChan $ ReceivedMessage devList
-  writeBChan evChan $ ReceivedDeviceList devices
+  doConcurrently_
+    [ sendMessage con $ RequestDeviceList 2
+    , sendMessage con $ StartScanning 3
+    -- main loop
+    , runEffect $ buttplugMessages con >-> toEvents >-> P.mapM_ (writeBChan evChan)
+    ]
 
-  sendMessage con $ StartScanning 3
-
-  -- main loop
-  runEffect $ buttplugMessages con >-> toEvents >-> P.mapM_ (writeBChan evChan)
-
+doConcurrently_ = mapConcurrently_ id
 
 -- Produces all messages that come in through a buttplug connection
 buttplugMessages :: Connector c => Connection c -> Producer Message IO ()
