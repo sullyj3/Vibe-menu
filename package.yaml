@@ -27,6 +27,7 @@ dependencies:
 - containers
 - microlens
 - microlens-th
+- pipes
 - process
 - text
 - vector

@@ -12,6 +12,7 @@ import Lens.Micro ((^.), (&), (%~), (.~))
 import Lens.Micro.TH
 import Control.Monad (forever)
 import Control.Monad.IO.Class
+import Control.Concurrent.Async
 import Data.Foldable (traverse_)
 import System.Environment
 import System.Exit (exitFailure)
@@ -22,46 +23,45 @@ import           Data.Vector (Vector)
 
 import qualified Graphics.Vty as V
 import Brick
-import Brick.Forms
-  ( Form
-  , newForm
-  , formState
-  , formFocus
-  , setFieldValid
-  , renderForm
-  , handleFormEvent
-  , invalidFields
-  , allFieldsValid
-  , focusedFormInputAttr
-  , invalidFormInputAttr
-  , checkboxField
-  , radioField
-  , editShowableField
-  , editTextField
-  , editPasswordField
-  , (@@=)
-  )
-import Brick.Focus
-  ( focusGetCurrent
-  , focusRingCursor
-  )
-import Brick.BChan
-  ( newBChan
-  , writeBChan
-  , readBChan
-  , BChan
-  )
+import Brick.Forms ( Form
+                   , newForm
+                   , formState
+                   , formFocus
+                   , setFieldValid
+                   , renderForm
+                   , handleFormEvent
+                   , invalidFields
+                   , allFieldsValid
+                   , focusedFormInputAttr
+                   , invalidFormInputAttr
+                   , checkboxField
+                   , radioField
+                   , editShowableField
+                   , editTextField
+                   , editPasswordField
+                   , (@@=)
+                   )
+import Brick.Focus ( focusGetCurrent
+                   , focusRingCursor
+                   )
+import Brick.BChan ( newBChan
+                   , writeBChan
+                   , readBChan
+                   , BChan
+                   )
 import qualified Brick.Widgets.Edit as E
 import qualified Brick.Widgets.List as L
 import qualified Brick.Widgets.Border as B
 import qualified Brick.Widgets.Center as C
 import qualified Brick.AttrMap as A
 
+import Pipes
+
 import Buttplug.Core
-import Control.Concurrent.Async
+import ButtPipe
 
 data ConnectScreenName = HostField
-          | PortField
+                       | PortField
           deriving (Eq, Ord, Show)
 
 data HostPort = HostPort { _host :: T.Text, _port :: Int }
@@ -263,6 +263,7 @@ main = do
 
 handleMsgs :: Connection WebSocketConnector -> BChan CustomEvent -> IO ()
 handleMsgs con msgChan = do
+  -- initial setup - handshake, get connected devices, and start scanning
   sendMessage con $ RequestServerInfo 1 "VibeMenu" 2
   [servInfo@(ServerInfo 1 _ _ _)] <- receiveMsgs con
   writeBChan msgChan $ ReceivedMessage servInfo
@@ -273,15 +274,13 @@ handleMsgs con msgChan = do
   writeBChan msgChan $ ReceivedDeviceList devices
 
   sendMessage con $ StartScanning 3
-  (forever do msgs <- receiveMsgs con
-              traverse_  handle msgs)
-  where
-    handle :: Message -> IO ()
-    handle msg = do
-      writeBChan msgChan $ ReceivedMessage msg
-      case msg of
-        DeviceAdded _ name ix devmsgs ->
-          writeBChan msgChan (EvDeviceAdded $ Device name ix devmsgs)
-        DeviceRemoved _ ix ->
-          writeBChan msgChan (EvDeviceRemoved ix)
-        _ -> pure ()
+
+  -- loop handle incoming messages
+  runEffect $ for (buttplugMessage con) $ \msg -> do
+    lift $ writeBChan msgChan $ ReceivedMessage msg
+    case msg of
+      DeviceAdded _ name ix devmsgs ->
+        lift $ writeBChan msgChan (EvDeviceAdded $ Device name ix devmsgs)
+      DeviceRemoved _ ix ->
+        lift $ writeBChan msgChan (EvDeviceRemoved ix)
+      _ -> pure ()
