@@ -182,11 +182,10 @@ vibeMenuHandleEvent :: VibeMenuState
                     -> BrickEvent VibeMenuName CustomEvent
                     -> EventM VibeMenuName (Next VibeMenuState)
 vibeMenuHandleEvent s = \case
-  VtyEvent (V.EvResize {})     -> continue s
-  VtyEvent (V.EvKey V.KEsc [])   -> halt s
-  VtyEvent (V.EvKey V.KEnter []) -> continue s -- TODO
-  VtyEvent e -> handleEventLensed s messageLog L.handleListEvent e
-    >>= continue
+  VtyEvent e -> case e of
+    V.EvResize {} -> continue s
+    V.EvKey V.KEsc [] -> halt s
+    e -> handleEventLensed s messageLog L.handleListEvent e >>= continue
   AppEvent e -> case e of
     ReceivedMessage msg -> continue $ s & messageLog %~ listAppend msg
     ReceivedDeviceList devs ->
