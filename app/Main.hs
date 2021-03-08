@@ -7,6 +7,7 @@
 {-# LANGUAGE ViewPatterns #-}
 module Main where
 
+
 import qualified Data.Text as T
 import Lens.Micro ((^.), (&), (%~), (.~))
 import Lens.Micro.TH
@@ -77,7 +78,7 @@ makeLenses ''HostPort
 mkForm :: HostPort -> Form HostPort e ConnectScreenName
 mkForm =
     let label s w = padBottom (Pad 1) $
-                    (vLimit 1 $ hLimit 15 $ str s <+> fill ' ') <+> w
+                    vLimit 1 (hLimit 15 $ str s <+> fill ' ') <+> w
     in newForm [ label "Host" @@=
                    editTextField host HostField (Just 1)
                , label "Port" @@=
@@ -105,7 +106,7 @@ connectScreen =
     App { appDraw = drawConnectScreen
         , appHandleEvent = \s ev ->
             case ev of
-                VtyEvent (V.EvResize {})     -> continue s
+                VtyEvent V.EvResize {}     -> continue s
                 VtyEvent (V.EvKey V.KEsc [])   -> halt s
                 VtyEvent (V.EvKey V.KEnter []) -> halt s
                 _ -> do
@@ -113,7 +114,7 @@ connectScreen =
 
                     -- Example of external validation:
                     continue $ setFieldValid
-                      ((formState s')^.port >= 0) PortField s'
+                      (formState s' ^. port >= 0) PortField s'
 
         , appChooseCursor = focusRingCursor formFocus
         , appStartEvent = return
@@ -141,13 +142,13 @@ drawVibeMenu s = [ ui ]
   where header = withAttr "header" . txtWrap
         title = padBottom (Pad 1) $ header "VibeMenu"
         deviceMenu =
-          (header "Connected Devices")
+          header "Connected Devices"
           <=>
-          (padBottom (Pad 1) $ (L.renderList listDrawDevice True $ s ^. devices))
+          padBottom (Pad 1) ( L.renderList listDrawDevice True $ s ^. devices)
         receivedMsgLog =
-          (header "Message log")
+          header "Message log"
           <=>
-          (padBottom (Pad 1) $ (L.renderList listDrawElement False $ s ^. messageLog))
+          padBottom (Pad 1) (L.renderList listDrawElement False $ s ^. messageLog)
 
         ui = title
              <=>
@@ -156,11 +157,11 @@ drawVibeMenu s = [ ui ]
              receivedMsgLog
 
 listDrawDevice :: Bool -> Device -> Widget VibeMenuName
-listDrawDevice sel (Device {..})
+listDrawDevice sel Device {..}
   | sel       = withAttr L.listSelectedAttr $ txt label
   | otherwise =                               txt label
   where label :: T.Text
-        label = (T.pack $ show deviceIndex) <> " " <> deviceName
+        label = T.pack (show deviceIndex) <> " " <> deviceName
 
 listDrawElement :: (Show e) => Bool -> e -> Widget VibeMenuName
 listDrawElement sel a =
