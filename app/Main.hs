@@ -293,7 +293,7 @@ toEvents = forever do
 
 
 -- Translate messages that the UI needs to know about to events, discarding 
--- others
+-- the unnecessary ones
 msgToCustomEvent :: Message -> Maybe CustomEvent
 msgToCustomEvent = \case
   DeviceAdded _ name ix devmsgs -> Just $ EvDeviceAdded $ Device name ix devmsgs
