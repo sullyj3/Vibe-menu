@@ -178,7 +178,7 @@ vibeMenu =
         , appAttrMap = const theMap
         }
 
-vibeMenuHandleEvent :: VibeMenuState 
+vibeMenuHandleEvent :: VibeMenuState
                     -> BrickEvent VibeMenuName CustomEvent
                     -> EventM VibeMenuName (Next VibeMenuState)
 vibeMenuHandleEvent s = \case
@@ -246,8 +246,7 @@ main = do
 
     (host, port, vty) <- getHostPort
 
-    let --HostPort host port = formState connectForm'
-        connector = InsecureWebSocketConnector host port
+    let connector = InsecureWebSocketConnector host port
         initialState = VibeMenuState (L.list MessageLog mempty 1)
                                      (L.list DeviceMenu mempty 1)
 
@@ -277,12 +276,12 @@ handleMsgs con evChan = do
   sendMessage con $ StartScanning 3
 
   -- main loop
-  runEffect $ buttplugMessage con >-> toEvents >-> P.mapM_ (writeBChan evChan)
+  runEffect $ buttplugMessages con >-> toEvents >-> P.mapM_ (writeBChan evChan)
 
 
 -- Produces all messages that come in through a buttplug connection
-buttplugMessage :: Connector c => Connection c -> Producer Message IO ()
-buttplugMessage con = forever $ do
+buttplugMessages :: Connector c => Connection c -> Producer Message IO ()
+buttplugMessages con = forever $ do
   msgs <- lift $ receiveMsgs con
   mapM_ yield msgs
 
