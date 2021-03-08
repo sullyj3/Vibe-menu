@@ -56,6 +56,7 @@ import qualified Brick.Widgets.Center as C
 import qualified Brick.AttrMap as A
 
 import Pipes
+import qualified Pipes.Prelude as P
 
 import Buttplug.Core
 import ButtPipe
@@ -275,12 +276,31 @@ handleMsgs con msgChan = do
 
   sendMessage con $ StartScanning 3
 
-  -- loop handle incoming messages
-  runEffect $ for (buttplugMessage con) $ \msg -> do
-    lift $ writeBChan msgChan $ ReceivedMessage msg
-    case msg of
-      DeviceAdded _ name ix devmsgs ->
-        lift $ writeBChan msgChan (EvDeviceAdded $ Device name ix devmsgs)
-      DeviceRemoved _ ix ->
-        lift $ writeBChan msgChan (EvDeviceRemoved ix)
-      _ -> pure ()
+  -- main loop
+  runEffect $ buttplugMessage con >-> toEvents >-> P.mapM_ (writeBChan msgChan)
+
+
+buttplugMessage :: Connector c => Connection c -> Producer Message IO ()
+buttplugMessage con = forever $ do
+  msgs <- lift $ receiveMsgs con
+  mapM_ yield msgs
+
+
+-- We notify the UI of every message so it can display them, but also
+-- translate messages into simplified events
+toEvents :: Pipe Message CustomEvent IO ()
+toEvents = forever do
+  msg <- await
+  yield (ReceivedMessage msg)
+  case msgToCustomEvent msg of
+    Just ev -> yield ev
+    Nothing -> pure ()
+
+
+msgToCustomEvent :: Message -> Maybe CustomEvent
+msgToCustomEvent = \case
+  DeviceAdded _ name ix devmsgs -> Just $ EvDeviceAdded $ Device name ix devmsgs
+  DeviceRemoved _ ix -> Just $ EvDeviceRemoved ix
+  DeviceList _ devices -> Just $ ReceivedDeviceList devices
+  _ -> Nothing
+
