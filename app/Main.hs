@@ -281,9 +281,7 @@ handleMsgs con evChan = do
 
 -- Produces all messages that come in through a buttplug connection
 buttplugMessages :: Connector c => Connection c -> Producer Message IO ()
-buttplugMessages con = forever $ do
-  msgs <- lift $ receiveMsgs con
-  mapM_ yield msgs
+buttplugMessages con = forever $ lift (receiveMsgs con) >>= each
 
 
 -- We notify the UI of every message so it can display them, but also
