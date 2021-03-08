@@ -1,19 +1,24 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns #-}
 module Main where
 
 import qualified Data.Text as T
 import Lens.Micro ((^.), (&), (%~), (.~))
 import Lens.Micro.TH
 import Control.Monad (forever)
+import Control.Monad.IO.Class
 import Data.Foldable (traverse_)
 import System.Environment
 import System.Exit (exitFailure)
 import System.Process
 
 import qualified Data.Vector as Vec
+import           Data.Vector (Vector)
 
 import qualified Graphics.Vty as V
 import Brick
@@ -78,9 +83,6 @@ mkForm =
                    editShowableField port PortField
                ]
 
-customAttr :: A.AttrName
-customAttr = L.listSelectedAttr <> "custom"
-
 theMap :: AttrMap
 theMap = attrMap V.defAttr
   [ (E.editAttr, V.white `on` V.black)
@@ -89,8 +91,7 @@ theMap = attrMap V.defAttr
   , (focusedFormInputAttr, V.black `on` V.yellow)
   , ("header", V.black `on` V.white)
   , (L.listAttr,            V.white `on` V.black)
-  , (L.listSelectedAttr,    V.blue `on` V.black)
-  , (customAttr,            fg V.cyan)
+  , (L.listSelectedAttr,    V.white `on` V.blue)
   ]
 
 drawConnectScreen :: Form HostPort e ConnectScreenName -> [Widget ConnectScreenName]
@@ -123,15 +124,17 @@ data VibeMenuName = MessageLog
   deriving (Eq, Ord, Show)
 
 data VibeMenuState =
-  VMSt { _messageLog :: L.List VibeMenuName Message -- TODO replace with list for scrolling
-       , _devices :: L.List VibeMenuName Device
-       }
+  VibeMenuState { _messageLog :: L.List VibeMenuName Message
+                , _devices :: L.List VibeMenuName Device
+                }
 
 makeLenses ''VibeMenuState
 
 
 data CustomEvent = ReceivedMessage Message
                  | ReceivedDeviceList [Device]
+                 | EvDeviceAdded Device
+                 | EvDeviceRemoved Word
 
 drawVibeMenu s = [ ui ]
   where header = withAttr "header" . txtWrap
@@ -139,7 +142,7 @@ drawVibeMenu s = [ ui ]
         deviceMenu =
           (header "Connected Devices")
           <=>
-          (padBottom (Pad 1) $ (L.renderList listDrawElement True $ s ^. devices))
+          (padBottom (Pad 1) $ (L.renderList listDrawDevice True $ s ^. devices))
         receivedMsgLog =
           (header "Message log")
           <=>
@@ -151,35 +154,60 @@ drawVibeMenu s = [ ui ]
              <=>
              receivedMsgLog
 
+listDrawDevice :: Bool -> Device -> Widget VibeMenuName
+listDrawDevice sel (Device {..})
+  | sel       = withAttr L.listSelectedAttr $ txt label
+  | otherwise =                               txt label
+  where label :: T.Text
+        label = (T.pack $ show deviceIndex) <> " " <> deviceName
+
 listDrawElement :: (Show e) => Bool -> e -> Widget VibeMenuName
 listDrawElement sel a =
-    let selStr s = if sel
-                   then withAttr customAttr (str $ "<" <> s <> ">")
-                   else str s
-    in (selStr $ show a)
+     let selStr s = if sel
+                    then withAttr L.listSelectedAttr $ str s 
+                    else str s
+     in (selStr $ show a)
 
 vibeMenu :: App VibeMenuState CustomEvent VibeMenuName
 vibeMenu =
     App { appDraw = drawVibeMenu
-        , appHandleEvent = \s ev ->
-            case ev of
-                VtyEvent (V.EvResize {})     -> continue s
-                VtyEvent (V.EvKey V.KEsc [])   -> halt s
-                VtyEvent (V.EvKey V.KEnter []) -> continue s -- TODO
-                VtyEvent e -> handleEventLensed s messageLog L.handleListEvent e
-                  >>= continue
-                AppEvent (ReceivedMessage msg) -> do
-                  let len = s ^. messageLog & length
-                  continue $ s & messageLog %~ (L.listInsert len msg)
-                AppEvent (ReceivedDeviceList devs) -> do
-                  continue $ s & devices .~ L.list DeviceMenu (Vec.fromList devs) 1
-                -- TODO handle deviceAdded and deviceRemoved
-                _ -> continue s
-
+        , appHandleEvent = vibeMenuHandleEvent
         , appChooseCursor = neverShowCursor -- TODO
         , appStartEvent = return
         , appAttrMap = const theMap
         }
+
+vibeMenuHandleEvent :: VibeMenuState 
+                    -> BrickEvent VibeMenuName CustomEvent
+                    -> EventM VibeMenuName (Next VibeMenuState)
+vibeMenuHandleEvent s = \case
+  VtyEvent (V.EvResize {})     -> continue s
+  VtyEvent (V.EvKey V.KEsc [])   -> halt s
+  VtyEvent (V.EvKey V.KEnter []) -> continue s -- TODO
+  VtyEvent e -> handleEventLensed s messageLog L.handleListEvent e
+    >>= continue
+  AppEvent (ReceivedMessage msg) -> do
+    let len = s ^. messageLog & length
+    continue $ s & messageLog %~ (L.listInsert len msg)
+  AppEvent (ReceivedDeviceList devs) -> do
+    continue $ s & devices .~ L.list DeviceMenu (Vec.fromList devs) 1
+
+  AppEvent (EvDeviceAdded dev@(Device devName (fromIntegral -> ix) _)) -> do
+      continue $ s & devices %~ listAppend dev
+  AppEvent (EvDeviceRemoved (fromIntegral -> ix)) -> do
+      continue $ s & devices %~ deleteDeviceByIndex ix
+  _ -> continue s
+
+listAppend :: e -> L.List n e -> L.List n e
+listAppend elt l = let n = Vec.length $ L.listElements l
+                    in L.listInsert n elt l
+
+deleteDeviceByIndex :: Word -> L.List n Device -> L.List n Device
+deleteDeviceByIndex devIx l =
+  case Vec.findIndex ((devIx==) . deviceIndex) (L.listElements l) of
+    Just listIndex -> L.listRemove listIndex l
+    Nothing -> l
+
 
 getHostPort :: IO (String, Int, V.Vty)
 getHostPort = do
@@ -219,8 +247,8 @@ main = do
 
     let --HostPort host port = formState connectForm'
         connector = InsecureWebSocketConnector host port
-        initialState = VMSt (L.list MessageLog mempty 1)
-                            (L.list DeviceMenu mempty 1)
+        initialState = VibeMenuState (L.list MessageLog mempty 1)
+                                     (L.list DeviceMenu mempty 1)
 
 
     putStrLn $ "Connecting to: " <> host <> ":" <> show port
@@ -236,10 +264,24 @@ main = do
 handleMsgs :: Connection WebSocketConnector -> BChan CustomEvent -> IO ()
 handleMsgs con msgChan = do
   sendMessage con $ RequestServerInfo 1 "VibeMenu" 2
-  [ServerInfo 1 _ _ _] <- receiveMsgs con
+  [servInfo@(ServerInfo 1 _ _ _)] <- receiveMsgs con
+  writeBChan msgChan $ ReceivedMessage servInfo
+
   sendMessage con $ RequestDeviceList 2
-  [DeviceList 2 devices] <- receiveMsgs con
+  [devList@(DeviceList 2 devices)] <- receiveMsgs con
+  writeBChan msgChan $ ReceivedMessage devList
   writeBChan msgChan $ ReceivedDeviceList devices
-  sendMessage con $ StartScanning 2
+
+  sendMessage con $ StartScanning 3
   (forever do msgs <- receiveMsgs con
-              traverse_ (writeBChan msgChan . ReceivedMessage) msgs)
+              traverse_  handle msgs)
+  where
+    handle :: Message -> IO ()
+    handle msg = do
+      writeBChan msgChan $ ReceivedMessage msg
+      case msg of
+        DeviceAdded _ name ix devmsgs ->
+          writeBChan msgChan (EvDeviceAdded $ Device name ix devmsgs)
+        DeviceRemoved _ ix ->
+          writeBChan msgChan (EvDeviceRemoved ix)
+        _ -> pure ()

@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a7b6e5179092a380fab51f7a90a8588b51d65abf5a0df3100c64ba3fa0da0809
+-- hash: ce19e471ef9ccbf6df133942ebab00dfb2f048b8f2090ebf15d4d9f35e048ce6
 
 name:           vibe-menu
 version:        0.1.0.0
@@ -37,6 +37,7 @@ library
     , base >=4.7 && <5
     , brick
     , buttplug-hs-core
+    , containers
     , microlens
     , microlens-th
     , process
@@ -57,6 +58,7 @@ executable vibe-menu-exe
     , base >=4.7 && <5
     , brick
     , buttplug-hs-core
+    , containers
     , microlens
     , microlens-th
     , process
@@ -79,6 +81,7 @@ test-suite vibe-menu-test
     , base >=4.7 && <5
     , brick
     , buttplug-hs-core
+    , containers
     , microlens
     , microlens-th
     , process
