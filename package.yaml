@@ -29,6 +29,7 @@ dependencies:
 - microlens
 - microlens-th
 - process
+- vector
 
 library:
   source-dirs: src

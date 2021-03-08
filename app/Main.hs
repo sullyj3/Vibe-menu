@@ -13,6 +13,8 @@ import System.Environment
 import System.Exit (exitFailure)
 import System.Process
 
+import qualified Data.Vector as Vec
+
 import qualified Graphics.Vty as V
 import Brick
 import Brick.Forms
@@ -117,24 +119,35 @@ connectScreen =
         }
 
 data VibeMenuName = MessageLog
+                  | DeviceMenu
   deriving (Eq, Ord, Show)
 
 data VibeMenuState =
   VMSt { _messageLog :: L.List VibeMenuName Message -- TODO replace with list for scrolling
+       , _devices :: L.List VibeMenuName Device
        }
 
 makeLenses ''VibeMenuState
 
 
 data CustomEvent = ReceivedMessage Message
+                 | ReceivedDeviceList [Device]
 
 drawVibeMenu s = [ ui ]
-  where title = padBottom (Pad 1) $ withAttr "header" $ txtWrap "VibeMenu"
-        receivedMsgLog =
-          (withAttr "header" $ txtWrap "Message log")
+  where header = withAttr "header" . txtWrap
+        title = padBottom (Pad 1) $ header "VibeMenu"
+        deviceMenu =
+          (header "Connected Devices")
           <=>
-          (padBottom (Pad 1) $ (L.renderList listDrawElement True $ s ^. messageLog))
+          (padBottom (Pad 1) $ (L.renderList listDrawElement True $ s ^. devices))
+        receivedMsgLog =
+          (header "Message log")
+          <=>
+          (padBottom (Pad 1) $ (L.renderList listDrawElement False $ s ^. messageLog))
+
         ui = title
+             <=>
+             deviceMenu
              <=>
              receivedMsgLog
 
@@ -158,6 +171,9 @@ vibeMenu =
                 AppEvent (ReceivedMessage msg) -> do
                   let len = s ^. messageLog & length
                   continue $ s & messageLog %~ (L.listInsert len msg)
+                AppEvent (ReceivedDeviceList devs) -> do
+                  continue $ s & devices .~ L.list DeviceMenu (Vec.fromList devs) 1
+                -- TODO handle deviceAdded and deviceRemoved
                 _ -> continue s
 
         , appChooseCursor = neverShowCursor -- TODO
@@ -204,6 +220,7 @@ main = do
     let --HostPort host port = formState connectForm'
         connector = InsecureWebSocketConnector host port
         initialState = VMSt (L.list MessageLog mempty 1)
+                            (L.list DeviceMenu mempty 1)
 
 
     putStrLn $ "Connecting to: " <> host <> ":" <> show port
@@ -220,6 +237,9 @@ handleMsgs :: Connection WebSocketConnector -> BChan CustomEvent -> IO ()
 handleMsgs con msgChan = do
   sendMessage con $ RequestServerInfo 1 "VibeMenu" 2
   [ServerInfo 1 _ _ _] <- receiveMsgs con
+  sendMessage con $ RequestDeviceList 2
+  [DeviceList 2 devices] <- receiveMsgs con
+  writeBChan msgChan $ ReceivedDeviceList devices
   sendMessage con $ StartScanning 2
   (forever do msgs <- receiveMsgs con
               traverse_ (writeBChan msgChan . ReceivedMessage) msgs)
