@@ -188,11 +188,9 @@ vibeMenuHandleEvent s = \case
   VtyEvent e -> handleEventLensed s messageLog L.handleListEvent e
     >>= continue
   AppEvent (ReceivedMessage msg) -> do
-    let len = s ^. messageLog & length
-    continue $ s & messageLog %~ (L.listInsert len msg)
+    continue $ s & messageLog %~ listAppend msg
   AppEvent (ReceivedDeviceList devs) -> do
     continue $ s & devices .~ L.list DeviceMenu (Vec.fromList devs) 1
-
   AppEvent (EvDeviceAdded dev@(Device devName (fromIntegral -> ix) _)) -> do
       continue $ s & devices %~ listAppend dev
   AppEvent (EvDeviceRemoved (fromIntegral -> ix)) -> do
