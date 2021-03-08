@@ -280,6 +280,7 @@ handleMsgs con msgChan = do
   runEffect $ buttplugMessage con >-> toEvents >-> P.mapM_ (writeBChan msgChan)
 
 
+-- Produces all messages that come in through a buttplug connection
 buttplugMessage :: Connector c => Connection c -> Producer Message IO ()
 buttplugMessage con = forever $ do
   msgs <- lift $ receiveMsgs con
@@ -297,6 +298,8 @@ toEvents = forever do
     Nothing -> pure ()
 
 
+-- Translate messages that the UI needs to know about to events, discarding 
+-- others
 msgToCustomEvent :: Message -> Maybe CustomEvent
 msgToCustomEvent = \case
   DeviceAdded _ name ix devmsgs -> Just $ EvDeviceAdded $ Device name ix devmsgs
