@@ -187,13 +187,13 @@ vibeMenuHandleEvent s = \case
   VtyEvent (V.EvKey V.KEnter []) -> continue s -- TODO
   VtyEvent e -> handleEventLensed s messageLog L.handleListEvent e
     >>= continue
-  AppEvent (ReceivedMessage msg) -> do
-    continue $ s & messageLog %~ listAppend msg
-  AppEvent (ReceivedDeviceList devs) -> do
-    continue $ s & devices .~ L.list DeviceMenu (Vec.fromList devs) 1
-  AppEvent (EvDeviceAdded dev@(Device devName (fromIntegral -> ix) _)) -> do
+  AppEvent e -> case e of
+    ReceivedMessage msg -> continue $ s & messageLog %~ listAppend msg
+    ReceivedDeviceList devs ->
+      continue $ s & devices .~ L.list DeviceMenu (Vec.fromList devs) 1
+    EvDeviceAdded dev@(Device devName (fromIntegral -> ix) _) ->
       continue $ s & devices %~ listAppend dev
-  AppEvent (EvDeviceRemoved (fromIntegral -> ix)) -> do
+    EvDeviceRemoved (fromIntegral -> ix) ->
       continue $ s & devices %~ deleteDeviceByIndex ix
   _ -> continue s
 
