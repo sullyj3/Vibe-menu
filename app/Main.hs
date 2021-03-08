@@ -255,29 +255,29 @@ main = do
     putStrLn $ "Connecting to: " <> host <> ":" <> show port
     runClient connector \con -> do
       putStrLn "connected!"
-      msgChan <- newBChan 10 -- tweak chan capacity
+      evChan <- newBChan 10 -- tweak chan capacity
       race_
-        (handleMsgs con msgChan)
-        (customMain vty buildVty (Just msgChan) vibeMenu initialState)
+        (handleMsgs con evChan)
+        (customMain vty buildVty (Just evChan) vibeMenu initialState)
       pure ()
 
 
 handleMsgs :: Connection WebSocketConnector -> BChan CustomEvent -> IO ()
-handleMsgs con msgChan = do
+handleMsgs con evChan = do
   -- initial setup - handshake, get connected devices, and start scanning
   sendMessage con $ RequestServerInfo 1 "VibeMenu" 2
   [servInfo@(ServerInfo 1 _ _ _)] <- receiveMsgs con
-  writeBChan msgChan $ ReceivedMessage servInfo
+  writeBChan evChan $ ReceivedMessage servInfo
 
   sendMessage con $ RequestDeviceList 2
   [devList@(DeviceList 2 devices)] <- receiveMsgs con
-  writeBChan msgChan $ ReceivedMessage devList
-  writeBChan msgChan $ ReceivedDeviceList devices
+  writeBChan evChan $ ReceivedMessage devList
+  writeBChan evChan $ ReceivedDeviceList devices
 
   sendMessage con $ StartScanning 3
 
   -- main loop
-  runEffect $ buttplugMessage con >-> toEvents >-> P.mapM_ (writeBChan msgChan)
+  runEffect $ buttplugMessage con >-> toEvents >-> P.mapM_ (writeBChan evChan)
 
 
 -- Produces all messages that come in through a buttplug connection
