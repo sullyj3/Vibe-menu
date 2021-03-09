@@ -7,7 +7,7 @@
 ```
 $ stack install
 ```
-3. make sure the stack install location (`$ stack path --local-bin`) is in your $PATH
+3. make sure the stack install location (`$ stack path --local-bin`) is in your `$PATH`
 
 ## Usage
 1. Start a buttplug server listening on insecure websockets.
@@ -16,5 +16,5 @@ $ stack install
 $ vibe-menu
 ```
 
-The number keys control vibration speed for the highlighted device, with 1 = 10%, 0 = 100%
+The number keys control vibration speed for the highlighted device, with 1 = 10%, 0 = 100%.
 `s` stops all connected devices
