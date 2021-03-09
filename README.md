@@ -2,6 +2,8 @@
 Control your vibrators from the console!
 This program is a testing ground for [buttplug-hs-core](https://github.com/sullyj3/buttplug-hs-core)
 
+Unfortunately this program is not windows compabitble. It works great on WSL though!
+
 ## Installation:
 1. Make sure you have [stack](https://docs.haskellstack.org/en/stable/README/#how-to-install) installed
 2.
