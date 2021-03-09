@@ -300,13 +300,13 @@ handleMsgs :: Connection WebSocketConnector
            -> IO ()
 handleMsgs con evChan cmdChan = do
   -- block while we perform handshake
-  sendMessage con $ RequestServerInfo 1 "VibeMenu" clientMessageVersion
-  [servInfo@(ServerInfo 1 _ _ _)] <- receiveMsgs con
+  sendMessage con $ MsgRequestServerInfo 1 "VibeMenu" clientMessageVersion
+  [servInfo@(MsgServerInfo 1 _ _ _)] <- receiveMsgs con
   writeBChan evChan $ ReceivedMessage servInfo
 
   mapConcurrently_ id
-    [ sendMessage con $ RequestDeviceList 2
-    , sendMessage con $ StartScanning 3
+    [ sendMessage con $ MsgRequestDeviceList 2
+    , sendMessage con $ MsgStartScanning 3
     -- main loop
     , buttplugMessages con
       |> S.concatMap (toEvents .> S.fromFoldable)
@@ -317,9 +317,9 @@ handleMsgs con evChan cmdChan = do
 
 handleCmd :: Connector c => Connection c -> Command -> IO ()
 handleCmd con = \case
-  CmdStopAll             -> sendMessage con $ StopAllDevices 1
+  CmdStopAll             -> sendMessage con $ MsgStopAllDevices 1
   CmdVibrate devIx speed -> sendMessage con $
-    VibrateCmd 1 devIx [Vibrate 0 speed]
+    MsgVibrateCmd 1 devIx [Vibrate 0 speed]
 
 
 uiCmds :: (IsStream t) => BChan Command -> t IO Command
@@ -345,7 +345,7 @@ toEvents msg = catMaybes
   -- the unnecessary ones
   msgToCustomEvent :: Message -> Maybe CustomEvent
   msgToCustomEvent = \case
-    DeviceAdded _ name ix devmsgs -> Just $ EvDeviceAdded $ Device name ix devmsgs
-    DeviceRemoved _ ix            -> Just $ EvDeviceRemoved ix
-    DeviceList _ devices          -> Just $ ReceivedDeviceList devices
+    MsgDeviceAdded _ name ix devmsgs -> Just $ EvDeviceAdded $ Device name ix devmsgs
+    MsgDeviceRemoved _ ix            -> Just $ EvDeviceRemoved ix
+    MsgDeviceList _ devices          -> Just $ ReceivedDeviceList devices
     _ -> Nothing

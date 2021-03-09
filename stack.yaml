@@ -42,7 +42,7 @@ packages:
 #
 extra-deps:
 - github: sullyj3/buttplug-hs-core
-  commit: 2e927909a5b883eb5ab2409a101b0c6a952e55a2
+  commit: f7e4e0d44a12dd9473de3213ee9571ca5586169f
 - streamly-0.7.3
 
 
