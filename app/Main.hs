@@ -22,6 +22,7 @@ import System.Process
 import           Data.Maybe (catMaybes)
 import qualified Data.Vector as Vec
 import           Data.Vector (Vector)
+import           Data.Char (ord)
 
 import qualified Graphics.Vty as V
 import Brick
@@ -128,9 +129,14 @@ data VibeMenuName = MessageLog
                   | DeviceMenu
   deriving (Eq, Ord, Show)
 
+data Command = CmdStopAll
+             | CmdVibrate Word Double
+
+
 data VibeMenuState =
   VibeMenuState { _messageLog :: L.List VibeMenuName Message
                 , _devices :: L.List VibeMenuName Device
+                , _cmdChan :: BChan Command
                 }
 
 makeLenses ''VibeMenuState
@@ -182,6 +188,9 @@ vibeMenu =
         , appAttrMap = const theMap
         }
 
+sendCommand :: BChan Command -> Command -> EventM n ()
+sendCommand chan = liftIO . writeBChan chan
+
 vibeMenuHandleEvent :: VibeMenuState
                     -> BrickEvent VibeMenuName CustomEvent
                     -> EventM VibeMenuName (Next VibeMenuState)
@@ -189,7 +198,19 @@ vibeMenuHandleEvent s = \case
   VtyEvent e -> case e of
     V.EvResize {} -> continue s
     V.EvKey V.KEsc [] -> halt s
-    e -> handleEventLensed s messageLog L.handleListEvent e >>= continue
+    V.EvKey (V.KChar c) [] 
+      | '0' <= c && c <= '9' -> do
+        withSelectedDevice \(_, Device _ devIndex _) -> do
+           let strength = if c == '0' then 1
+                                      else fromIntegral (ord c - 48) / 10
+           sendCommand (s ^. cmdChan) (CmdVibrate devIndex strength)
+        continue s
+      | c == 's' -> do 
+        withSelectedDevice \(_, Device _ devIndex _) ->
+          sendCommand (s ^. cmdChan) CmdStopAll
+        continue s
+      | otherwise -> continue s
+    e -> handleEventLensed s devices L.handleListEvent e >>= continue
   AppEvent e -> case e of
     ReceivedMessage msg -> continue $ s & messageLog %~ listAppend msg
     ReceivedDeviceList devs ->
@@ -199,6 +220,13 @@ vibeMenuHandleEvent s = \case
     EvDeviceRemoved (fromIntegral -> ix) ->
       continue $ s & devices %~ deleteDeviceByIndex ix
   _ -> continue s
+  where selectedDevice = s ^. devices & L.listSelectedElement
+
+        withSelectedDevice :: ((Int, Device) -> EventM VibeMenuName ())
+                           -> EventM VibeMenuName ()
+        withSelectedDevice k = case selectedDevice of
+          Just d  -> k d
+          Nothing -> pure ()
 
 listAppend :: e -> L.List n e -> L.List n e
 listAppend elt l = let n = Vec.length $ L.listElements l
@@ -246,10 +274,12 @@ main :: IO ()
 main = do
 
     (host, port, vty) <- getHostPort
+    cmdChan <- newBChan 30
 
     let connector = InsecureWebSocketConnector host port
         initialState = VibeMenuState (L.list MessageLog mempty 1)
                                      (L.list DeviceMenu mempty 1)
+                                     cmdChan
 
 
     putStrLn $ "Connecting to: " <> host <> ":" <> show port
@@ -257,13 +287,16 @@ main = do
       putStrLn "connected!"
       evChan <- newBChan 10 -- tweak chan capacity
       race_
-        (handleMsgs con evChan)
+        (handleMsgs con evChan cmdChan)
         (customMain vty buildVty (Just evChan) vibeMenu initialState)
       pure ()
 
 
-handleMsgs :: Connection WebSocketConnector -> BChan CustomEvent -> IO ()
-handleMsgs con evChan = do
+handleMsgs :: Connection WebSocketConnector 
+           -> BChan CustomEvent
+           -> BChan Command
+           -> IO ()
+handleMsgs con evChan cmdChan = do
   -- block while we perform handshake
   sendMessage con $ RequestServerInfo 1 "VibeMenu" clientMessageVersion
   [servInfo@(ServerInfo 1 _ _ _)] <- receiveMsgs con
@@ -274,14 +307,25 @@ handleMsgs con evChan = do
     , sendMessage con $ StartScanning 3
     -- main loop
     , buttplugMessages con
-        & S.concatMap (toEvents .> S.fromFoldable)
-        & S.mapM_ (writeBChan evChan)
+      |> S.concatMap (toEvents .> S.fromFoldable)
+      |> S.mapM_ (writeBChan evChan)
+    , uiCmds cmdChan
+      |> S.mapM_ (handleCmd con)
     ]
+
+handleCmd :: Connector c => Connection c -> Command -> IO ()
+handleCmd con = \case
+  CmdStopAll             -> sendMessage con $ StopAllDevices 1
+  CmdVibrate devIx speed -> sendMessage con $
+    VibrateCmd 1 devIx [Vibrate 0 speed]
 
 doConcurrently_ = mapConcurrently_ id
 
+uiCmds chan = S.repeatM (readBChan chan)
+
 -- Produces all messages that come in through a buttplug connection
-buttplugMessages :: (IsStream t, Connector c) => Connection c -> t IO Message
+buttplugMessages :: (IsStream t, Connector c)
+                 => Connection c -> t IO Message
 --buttplugMessages con = forever $ lift (receiveMsgs con) >>= each
 buttplugMessages con = S.repeatM (receiveMsgs con)
                      & S.concatMap S.fromFoldable
@@ -294,13 +338,12 @@ toEvents msg = catMaybes
   [ Just $ ReceivedMessage msg
   , msgToCustomEvent msg
   ]
-
-
--- Translate messages that the UI needs to know about to events, discarding 
--- the unnecessary ones
-msgToCustomEvent :: Message -> Maybe CustomEvent
-msgToCustomEvent = \case
-  DeviceAdded _ name ix devmsgs -> Just $ EvDeviceAdded $ Device name ix devmsgs
-  DeviceRemoved _ ix -> Just $ EvDeviceRemoved ix
-  DeviceList _ devices -> Just $ ReceivedDeviceList devices
-  _ -> Nothing
+  where
+  -- Translate messages that the UI needs to know about to events, discarding 
+  -- the unnecessary ones
+  msgToCustomEvent :: Message -> Maybe CustomEvent
+  msgToCustomEvent = \case
+    DeviceAdded _ name ix devmsgs -> Just $ EvDeviceAdded $ Device name ix devmsgs
+    DeviceRemoved _ ix            -> Just $ EvDeviceRemoved ix
+    DeviceList _ devices          -> Just $ ReceivedDeviceList devices
+    _ -> Nothing
