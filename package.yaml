@@ -24,7 +24,7 @@ dependencies:
 - async
 - brick
 - buttplug-hs-core
-- containers
+# - containers
 - microlens
 - microlens-th
 - pipes

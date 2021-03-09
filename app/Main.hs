@@ -299,4 +299,3 @@ msgToCustomEvent = \case
   DeviceRemoved _ ix -> Just $ EvDeviceRemoved ix
   DeviceList _ devices -> Just $ ReceivedDeviceList devices
   _ -> Nothing
-
