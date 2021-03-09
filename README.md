@@ -5,6 +5,7 @@
 2.
 
 ```
+$ cd Vibe-menu
 $ stack install
 ```
 3. make sure the stack install location (`$ stack path --local-bin`) is in your `$PATH`
