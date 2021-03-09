@@ -304,7 +304,7 @@ handleMsgs con evChan cmdChan = do
   [servInfo@(ServerInfo 1 _ _ _)] <- receiveMsgs con
   writeBChan evChan $ ReceivedMessage servInfo
 
-  doConcurrently_
+  mapConcurrently_ id
     [ sendMessage con $ RequestDeviceList 2
     , sendMessage con $ StartScanning 3
     -- main loop
@@ -321,7 +321,6 @@ handleCmd con = \case
   CmdVibrate devIx speed -> sendMessage con $
     VibrateCmd 1 devIx [Vibrate 0 speed]
 
-doConcurrently_ = mapConcurrently_ id
 
 uiCmds :: (IsStream t) => BChan Command -> t IO Command
 uiCmds chan = S.repeatM (readBChan chan)
