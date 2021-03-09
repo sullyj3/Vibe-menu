@@ -17,4 +17,5 @@ $ vibe-menu
 ```
 
 The number keys control vibration speed for the highlighted device, with 1 = 10%, 0 = 100%.
-`s` stops all connected devices
+
+`s` stops all connected devices.
