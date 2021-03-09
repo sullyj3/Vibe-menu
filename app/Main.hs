@@ -294,6 +294,7 @@ main = do
       pure ()
 
 
+-- Background threads which handle communication with the server
 handleMsgs :: Connection WebSocketConnector 
            -> BChan CustomEvent
            -> BChan Command
