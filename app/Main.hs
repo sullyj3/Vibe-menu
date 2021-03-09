@@ -129,6 +129,7 @@ data VibeMenuName = MessageLog
                   | DeviceMenu
   deriving (Eq, Ord, Show)
 
+-- Commands from the UI thread to the background thread
 data Command = CmdStopAll
              | CmdVibrate Word Double
 
@@ -142,6 +143,7 @@ data VibeMenuState =
 makeLenses ''VibeMenuState
 
 
+-- events from bg thread to UI thread
 data CustomEvent = ReceivedMessage Message
                  | ReceivedDeviceList [Device]
                  | EvDeviceAdded Device
