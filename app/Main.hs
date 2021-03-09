@@ -19,6 +19,7 @@ import System.Environment
 import System.Exit (exitFailure)
 import System.Process
 
+import           Data.Maybe (catMaybes)
 import qualified Data.Vector as Vec
 import           Data.Vector (Vector)
 
@@ -56,11 +57,13 @@ import qualified Brick.Widgets.Border as B
 import qualified Brick.Widgets.Center as C
 import qualified Brick.AttrMap as A
 
-import Pipes
-import qualified Pipes.Prelude as P
+import Streamly hiding ((<=>))
+import Streamly.Prelude ((|:), nil)
+import qualified Streamly.Prelude as S
+
+import Flow
 
 import Buttplug.Core
-import ButtPipe
 
 data ConnectScreenName = HostField
                        | PortField
@@ -270,25 +273,27 @@ handleMsgs con evChan = do
     [ sendMessage con $ RequestDeviceList 2
     , sendMessage con $ StartScanning 3
     -- main loop
-    , runEffect $ buttplugMessages con >-> toEvents >-> P.mapM_ (writeBChan evChan)
+    , buttplugMessages con
+        & S.concatMap (toEvents .> S.fromFoldable)
+        & S.mapM_ (writeBChan evChan)
     ]
 
 doConcurrently_ = mapConcurrently_ id
 
 -- Produces all messages that come in through a buttplug connection
-buttplugMessages :: Connector c => Connection c -> Producer Message IO ()
-buttplugMessages con = forever $ lift (receiveMsgs con) >>= each
+buttplugMessages :: (IsStream t, Connector c) => Connection c -> t IO Message
+--buttplugMessages con = forever $ lift (receiveMsgs con) >>= each
+buttplugMessages con = S.repeatM (receiveMsgs con)
+                     & S.concatMap S.fromFoldable
 
 
 -- We notify the UI of every message so it can display them, but also
 -- translate messages into simplified events
-toEvents :: Pipe Message CustomEvent IO ()
-toEvents = forever do
-  msg <- await
-  yield (ReceivedMessage msg)
-  case msgToCustomEvent msg of
-    Just ev -> yield ev
-    Nothing -> pure ()
+toEvents :: Message -> [CustomEvent]
+toEvents msg = catMaybes
+  [ Just $ ReceivedMessage msg
+  , msgToCustomEvent msg
+  ]
 
 
 -- Translate messages that the UI needs to know about to events, discarding 

@@ -43,6 +43,8 @@ packages:
 extra-deps:
 - github: sullyj3/buttplug-hs-core
   commit: 2e927909a5b883eb5ab2409a101b0c6a952e55a2
+- streamly-0.7.3
+
 
 # Override default flag values for local packages and extra-deps
 # flags: {}
