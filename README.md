@@ -1,1 +1,20 @@
 # vibe-menu
+
+## Installation:
+1. Make sure you have [stack](https://docs.haskellstack.org/en/stable/README/#how-to-install) installed
+2.
+
+```
+$ stack install
+```
+3. make sure the stack install location (`$ stack path --local-bin`) is in your $PATH
+
+## Usage
+1. Start a buttplug server listening on insecure websockets.
+2.
+```
+$ vibe-menu
+```
+
+The number keys control vibration speed for the highlighted device, with 1 = 10%, 0 = 100%
+`s` stops all connected devices

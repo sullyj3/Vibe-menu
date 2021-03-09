@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 84bc0fd0da65ef44df6ce21d7878ca693674c1a939b4857d4fd3dc5201c1b94c
+-- hash: 564b4aeeba96e2c6ecbbdc1593252da6b22e2f1b8f64cdb154f025c373c89019
 
 name:           vibe-menu
 version:        0.1.0.0
@@ -47,7 +47,7 @@ library
     , vty
   default-language: Haskell2010
 
-executable vibe-menu-exe
+executable vibe-menu
   main-is: Main.hs
   other-modules:
       Paths_vibe_menu

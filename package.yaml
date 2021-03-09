@@ -37,7 +37,7 @@ library:
   source-dirs: src
 
 executables:
-  vibe-menu-exe:
+  vibe-menu:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
