@@ -321,6 +321,7 @@ handleCmd con = \case
 
 doConcurrently_ = mapConcurrently_ id
 
+uiCmds :: (IsStream t) => BChan Command -> t IO Command
 uiCmds chan = S.repeatM (readBChan chan)
 
 -- Produces all messages that come in through a buttplug connection
