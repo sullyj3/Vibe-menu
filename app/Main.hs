@@ -208,8 +208,7 @@ vibeMenuHandleEvent s = \case
            sendCommand (s ^. cmdChan) (CmdVibrate devIndex strength)
         continue s
       | c == 's' -> do 
-        withSelectedDevice \(_, Device _ devIndex _) ->
-          sendCommand (s ^. cmdChan) CmdStopAll
+        sendCommand (s ^. cmdChan) CmdStopAll
         continue s
       | otherwise -> continue s
     e -> handleEventLensed s devices L.handleListEvent e >>= continue
