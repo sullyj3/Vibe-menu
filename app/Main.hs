@@ -214,7 +214,8 @@ vibeMenuHandleEvent s = \case
       | otherwise -> continue s
     e -> handleEventLensed s devices L.handleListEvent e >>= continue
   AppEvent e -> case e of
-    ReceivedMessage msg -> continue $ s & messageLog %~ listAppend msg
+    ReceivedMessage msg -> continue $ s & messageLog %~
+      (listAppend msg .> L.listMoveToEnd)
     ReceivedDeviceList devs ->
       continue $ s & devices .~ L.list DeviceMenu (Vec.fromList devs) 1
     EvDeviceAdded dev@(Device devName (fromIntegral -> ix) _) ->
