@@ -3,24 +3,10 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/lock_files
 
-packages:
-- completed:
-    hackage: buttplug-hs-core-0.1.0.0@sha256:1c466d238e599cad392d9c3b7e03cc35fb7b56d0e77979270b9ffb6500cc89b3,3147
-    pantry-tree:
-      size: 677
-      sha256: 905db0c1df803e7badf59b2474fbe6d4d6550cba7e5a7da1fbed82bba4a9d203
-  original:
-    hackage: buttplug-hs-core-0.1.0.0
-- completed:
-    hackage: streamly-0.7.3@sha256:ad2a488fe802692ed47cab9fd0416c2904aac9e51cf2d8aafd1c3a40064c42f5,27421
-    pantry-tree:
-      size: 12739
-      sha256: 7736117dc83cd6c0b7b8ee136cf06fd2f728773561a99d89a8408664e57a4df8
-  original:
-    hackage: streamly-0.7.3
+packages: []
 snapshots:
 - completed:
-    size: 573297
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/nightly/2021/3/10.yaml
-    sha256: 88ad982379f4ebcd7cd67749aaac8d238318d596ce87ca5c34bf5625b53d011d
-  original: nightly-2021-03-10
+    size: 574369
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/nightly/2021/3/20.yaml
+    sha256: d4297470fde92e7794ced8e4b490a4f1733c1d7c840c4de74f6006b2a83b2b0c
+  original: nightly-2021-03-20
