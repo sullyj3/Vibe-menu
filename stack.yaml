@@ -17,7 +17,7 @@
 #
 # resolver: ./custom-snapshot.yaml
 # resolver: https://example.com/snapshots/2018-01-01.yaml
-resolver: nightly-2021-03-20
+resolver: nightly-2022-07-21
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -41,7 +41,7 @@ packages:
 #
 extra-deps:
 - git: git@github.com:sullyj3/buttplug-hs-core.git
-  commit: 0a7856a5b14c41438c74f14af8c0ddcd107f4b4b
+  commit: f2002cb540aa6bf1b3e821716cb0b05b83ed5f9a
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

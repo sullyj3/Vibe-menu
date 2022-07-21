@@ -6,18 +6,18 @@
 packages:
 - completed:
     name: buttplug-hs-core
-    version: 0.2.0.1
+    version: 0.2.0.0
     git: git@github.com:sullyj3/buttplug-hs-core.git
     pantry-tree:
-      size: 1025
-      sha256: bed5d33a62a0a48db09e29388e7855f44173ed35ee3bcb6c0bd3c19ddf8dd9aa
-    commit: 0a7856a5b14c41438c74f14af8c0ddcd107f4b4b
+      size: 1026
+      sha256: 57d1d4ae83df1c337c1bacdfc69bfe5218e813ce54f2950667156437ad9ad064
+    commit: f2002cb540aa6bf1b3e821716cb0b05b83ed5f9a
   original:
     git: git@github.com:sullyj3/buttplug-hs-core.git
-    commit: 0a7856a5b14c41438c74f14af8c0ddcd107f4b4b
+    commit: f2002cb540aa6bf1b3e821716cb0b05b83ed5f9a
 snapshots:
 - completed:
-    size: 574369
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/nightly/2021/3/20.yaml
-    sha256: d4297470fde92e7794ced8e4b490a4f1733c1d7c840c4de74f6006b2a83b2b0c
-  original: nightly-2021-03-20
+    size: 617441
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/nightly/2022/7/21.yaml
+    sha256: 79dd565ad2ddaca3300032a592912aaf95d6da96cb385d027cd91acb62fa7107
+  original: nightly-2022-07-21
