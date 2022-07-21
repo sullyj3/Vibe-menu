@@ -3,7 +3,18 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/lock_files
 
-packages: []
+packages:
+- completed:
+    name: buttplug-hs-core
+    version: 0.2.0.1
+    git: git@github.com:sullyj3/buttplug-hs-core.git
+    pantry-tree:
+      size: 1025
+      sha256: bed5d33a62a0a48db09e29388e7855f44173ed35ee3bcb6c0bd3c19ddf8dd9aa
+    commit: 0a7856a5b14c41438c74f14af8c0ddcd107f4b4b
+  original:
+    git: git@github.com:sullyj3/buttplug-hs-core.git
+    commit: 0a7856a5b14c41438c74f14af8c0ddcd107f4b4b
 snapshots:
 - completed:
     size: 574369

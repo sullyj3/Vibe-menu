@@ -5,6 +5,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE ImportQualifiedPost #-}
 module Main where
 
 
@@ -18,6 +19,7 @@ import Data.Foldable (traverse_)
 import System.Environment
 import System.Exit (exitFailure)
 import System.Process
+import Data.Char (isDigit)
 
 import           Data.Maybe (catMaybes)
 import qualified Data.Vector as Vec
@@ -64,7 +66,9 @@ import qualified Streamly.Prelude as S
 
 import Flow
 
-import Buttplug.Core
+import Buttplug.Core (Device(..), Message(..), Vibrate(..), clientMessageVersion)
+import Buttplug.Core.Handle     qualified as Buttplug
+import Buttplug.Core.WebSockets qualified as BPWS
 
 data ConnectScreenName = HostField
                        | PortField
@@ -200,17 +204,29 @@ vibeMenuHandleEvent s = \case
   VtyEvent e -> case e of
     V.EvResize {} -> continue s
     V.EvKey V.KEsc [] -> halt s
-    V.EvKey (V.KChar c) [] 
-      | '0' <= c && c <= '9' -> do
-        withSelectedDevice \(_, Device _ devIndex _) -> do
-           let strength = if c == '0' then 1
-                                      else fromIntegral (ord c - 48) / 10
-           sendCommand (s ^. cmdChan) (CmdVibrate devIndex strength)
-        continue s
-      | c == 's' -> do 
+    V.EvKey (V.KChar c) [] -> case c of
+      's' -> do 
         sendCommand (s ^. cmdChan) CmdStopAll
         continue s
-      | otherwise -> continue s
+      'q' -> halt s
+      _ | isDigit c -> do
+          withSelectedDevice \(_, Device _ devIndex _) -> do
+             let strength = if c == '0' then 1
+                                        else fromIntegral (ord c - 48) / 10
+             sendCommand (s ^. cmdChan) (CmdVibrate devIndex strength)
+          continue s
+        | otherwise -> continue s
+    -- V.EvKey (V.KChar c) [] 
+    --   | '0' <= c && c <= '9' -> do
+    --     withSelectedDevice \(_, Device _ devIndex _) -> do
+    --        let strength = if c == '0' then 1
+    --                                   else fromIntegral (ord c - 48) / 10
+    --        sendCommand (s ^. cmdChan) (CmdVibrate devIndex strength)
+    --     continue s
+    --   | c == 's' -> do 
+    --     sendCommand (s ^. cmdChan) CmdStopAll
+    --     continue s
+    --   | otherwise -> continue s
     e -> handleEventLensed s devices L.handleListEvent e >>= continue
   AppEvent e -> case e of
     ReceivedMessage msg -> continue $ s & messageLog %~
@@ -249,9 +265,8 @@ getHostPort = do
       [host, port] -> pure (host, read port, initialVty)
       _      -> do
 
-        initialHost <-
-          (<> ".local") . T.strip . T.pack <$> readProcess "hostname" [] ""
-        let connectForm = setFieldValid True PortField $
+        let initialHost = "127.0.0.1"
+            connectForm = setFieldValid True PortField $
               mkForm initialHostPort
             initialHostPort = HostPort initialHost 12345
 
@@ -278,14 +293,14 @@ main = do
     (host, port, vty) <- getHostPort
     cmdChan <- newBChan 30
 
-    let connector = InsecureWebSocketConnector host port
+    let connector = BPWS.Connector host port
         initialState = VibeMenuState (L.list MessageLog mempty 1)
                                      (L.list DeviceMenu mempty 1)
                                      cmdChan
 
 
     putStrLn $ "Connecting to: " <> host <> ":" <> show port
-    runClient connector \con -> do
+    BPWS.runClient connector \con -> do
       putStrLn "connected!"
       evChan <- newBChan 10 -- tweak chan capacity
       race_
@@ -295,19 +310,19 @@ main = do
 
 
 -- Background threads which handle communication with the server
-handleMsgs :: Connection WebSocketConnector 
+handleMsgs :: Buttplug.Handle
            -> BChan CustomEvent
            -> BChan Command
            -> IO ()
 handleMsgs con evChan cmdChan = do
   -- block while we perform handshake
-  sendMessage con $ MsgRequestServerInfo 1 "VibeMenu" clientMessageVersion
-  [servInfo@(MsgServerInfo 1 _ _ _)] <- receiveMsgs con
+  Buttplug.sendMessage con $ MsgRequestServerInfo 1 "VibeMenu" clientMessageVersion
+  [servInfo@(MsgServerInfo 1 _ _ _)] <- Buttplug.receiveMessages con
   writeBChan evChan $ ReceivedMessage servInfo
 
   mapConcurrently_ id
-    [ sendMessage con $ MsgRequestDeviceList 2
-    , sendMessage con $ MsgStartScanning 3
+    [ Buttplug.sendMessage con $ MsgRequestDeviceList 2
+    , Buttplug.sendMessage con $ MsgStartScanning 3
     -- main loop
     , buttplugMessages con
       |> S.concatMap (toEvents .> S.fromFoldable)
@@ -316,10 +331,10 @@ handleMsgs con evChan cmdChan = do
       |> S.mapM_ (handleCmd con)
     ]
 
-handleCmd :: Connector c => Connection c -> Command -> IO ()
+handleCmd :: Buttplug.Handle -> Command -> IO ()
 handleCmd con = \case
-  CmdStopAll             -> sendMessage con $ MsgStopAllDevices 1
-  CmdVibrate devIx speed -> sendMessage con $
+  CmdStopAll             -> Buttplug.sendMessage con $ MsgStopAllDevices 1
+  CmdVibrate devIx speed -> Buttplug.sendMessage con $
     MsgVibrateCmd 1 devIx [Vibrate 0 speed]
 
 
@@ -327,10 +342,10 @@ uiCmds :: (IsStream t) => BChan Command -> t IO Command
 uiCmds chan = S.repeatM (readBChan chan)
 
 -- Produces all messages that come in through a buttplug connection
-buttplugMessages :: (IsStream t, Connector c)
-                 => Connection c -> t IO Message
+buttplugMessages :: IsStream t
+                 => Buttplug.Handle -> t IO Message
 --buttplugMessages con = forever $ lift (receiveMsgs con) >>= each
-buttplugMessages con = S.repeatM (receiveMsgs con)
+buttplugMessages con = S.repeatM (Buttplug.receiveMessages con)
                      & S.concatMap S.fromFoldable
 
 
