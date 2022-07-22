@@ -153,7 +153,7 @@ data VibeMenuState = VibeMenuState
 makeLenses ''VibeMenuState
 
 -- events from bg thread to UI thread
-data CustomEvent
+data BPSessionEvent
   = ReceivedMessage Message
   | ReceivedDeviceList [Device]
   | EvDeviceAdded Device
@@ -191,7 +191,7 @@ listDrawElement sel a =
           else str s
    in (selStr $ show a)
 
-vibeMenu :: App VibeMenuState CustomEvent VibeMenuName
+vibeMenu :: App VibeMenuState BPSessionEvent VibeMenuName
 vibeMenu =
   App
     { appDraw = drawVibeMenu,
@@ -206,7 +206,7 @@ sendCommand chan = liftIO . writeBChan chan
 
 vibeMenuHandleEvent ::
   VibeMenuState ->
-  BrickEvent VibeMenuName CustomEvent ->
+  BrickEvent VibeMenuName BPSessionEvent ->
   EventM VibeMenuName (Next VibeMenuState)
 vibeMenuHandleEvent s = \case
   VtyEvent e -> case e of
@@ -333,7 +333,7 @@ main = do
 -- Background threads which handle communication with the server
 handleMsgs ::
   Buttplug.Handle ->
-  BChan CustomEvent ->
+  BChan BPSessionEvent ->
   BChan Command ->
   IO ()
 handleMsgs con evChan cmdChan = do
@@ -376,17 +376,17 @@ buttplugMessages con =
 
 -- We notify the UI of every message so it can display them, but also
 -- translate messages into simplified events
-toEvents :: Message -> [CustomEvent]
+toEvents :: Message -> [BPSessionEvent]
 toEvents msg =
   catMaybes
     [ Just $ ReceivedMessage msg,
-      msgToCustomEvent msg
+      msgToBPSessionEvent msg
     ]
   where
     -- Translate messages that the UI needs to know about to events, discarding
     -- the unnecessary ones
-    msgToCustomEvent :: Message -> Maybe CustomEvent
-    msgToCustomEvent = \case
+    msgToBPSessionEvent :: Message -> Maybe BPSessionEvent
+    msgToBPSessionEvent = \case
       MsgDeviceAdded _ name ix devmsgs -> Just $ EvDeviceAdded $ Device name ix devmsgs
       MsgDeviceRemoved _ ix -> Just $ EvDeviceRemoved ix
       MsgDeviceList _ devices -> Just $ ReceivedDeviceList devices
