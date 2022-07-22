@@ -3,6 +3,8 @@
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE OverloadedRecordUpdate #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -250,7 +252,7 @@ buildVty = do
 main :: IO ()
 main = do
   HostPort host port <- getHostPort
-  cmdChan <- newBChan 30
+  buttplugCmdChan <- newBChan 30
 
   vty <- buildVty
 
@@ -259,16 +261,21 @@ main = do
         VibeMenuState
           (L.list MessageLog mempty 1)
           (L.list DeviceMenu mempty 1)
-          cmdChan
+          buttplugCmdChan
 
-  putStrLn $ "Connecting to: " <> host <> ":" <> show port
-  BPWS.runClient connector \con -> do
+  evChan <- newBChan 10
+  race_
+    (connect connector buttplugCmdChan evChan)
+    (customMain vty buildVty (Just evChan) vibeMenu initialState)
+  pure ()
+
+connect connector buttplugCmdChan evChan = do
+  putStrLn $
+    "Connecting to: " <> connector.wsConnectorHost <> ":" <> show connector.wsConnectorPort
+  -- TODO handle exceptions
+  BPWS.runClient connector \handle -> do
     putStrLn "connected!"
-    evChan <- newBChan 10 -- tweak chan capacity
-    race_
-      (handleMsgs con evChan cmdChan)
-      (customMain vty buildVty (Just evChan) vibeMenu initialState)
-    pure ()
+    handleMsgs handle evChan buttplugCmdChan
 
 -- Background threads which handle communication with the server
 handleMsgs ::
@@ -276,22 +283,22 @@ handleMsgs ::
   BChan BPSessionEvent ->
   BChan Command ->
   IO ()
-handleMsgs con evChan cmdChan = do
+handleMsgs handle evChan buttplugCmdChan = do
   -- block while we perform handshake
-  Buttplug.sendMessage con $ MsgRequestServerInfo 1 "VibeMenu" clientMessageVersion
-  [servInfo@(MsgServerInfo 1 _ _ _)] <- Buttplug.receiveMessages con
+  Buttplug.sendMessage handle $ MsgRequestServerInfo 1 "VibeMenu" clientMessageVersion
+  [servInfo@(MsgServerInfo 1 _ _ _)] <- Buttplug.receiveMessages handle
   writeBChan evChan $ ReceivedMessage servInfo
 
   mapConcurrently_
     id
-    [ Buttplug.sendMessage con $ MsgRequestDeviceList 2,
-      Buttplug.sendMessage con $ MsgStartScanning 3,
+    [ Buttplug.sendMessage handle $ MsgRequestDeviceList 2,
+      Buttplug.sendMessage handle $ MsgStartScanning 3,
       -- main loop
-      buttplugMessages con
+      buttplugMessages handle
         |> S.concatMap (toEvents .> S.fromFoldable)
         |> S.mapM_ (writeBChan evChan),
-      uiCmds cmdChan
-        |> S.mapM_ (handleCmd con)
+      uiCmds buttplugCmdChan
+        |> S.mapM_ (handleCmd handle)
     ]
 
 handleCmd :: Buttplug.Handle -> Command -> IO ()
