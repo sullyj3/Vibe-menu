@@ -53,6 +53,7 @@ import Control.Monad.IO.Class
 import Data.Char (isDigit, ord)
 import Data.Foldable (traverse_)
 import Data.Maybe (catMaybes)
+import Data.Semigroup (First (..))
 import Data.Text qualified as T
 import Data.Vector (Vector)
 import Data.Vector qualified as Vec
@@ -72,26 +73,10 @@ data ConnectScreenName
   | PortField
   deriving (Eq, Ord, Show)
 
-data HostPort = HostPort {_host :: T.Text, _port :: Int}
+data HostPort = HostPort {_host :: String, _port :: Int}
   deriving (Show, Eq)
 
----------------------------
-
 makeLenses ''HostPort
-
--- This form is covered in the Brick User Guide; see the "Input Forms"
--- section.
-mkForm :: HostPort -> Form HostPort e ConnectScreenName
-mkForm =
-  let label s w =
-        padBottom (Pad 1) $
-          vLimit 1 (hLimit 15 $ str s <+> fill ' ') <+> w
-   in newForm
-        [ label "Host"
-            @@= editTextField host HostField (Just 1),
-          label "Port"
-            @@= editShowableField port PortField
-        ]
 
 theMap :: AttrMap
 theMap =
@@ -105,34 +90,6 @@ theMap =
       (L.listAttr, V.white `on` V.black),
       (L.listSelectedAttr, V.white `on` V.blue)
     ]
-
-drawConnectScreen :: Form HostPort e ConnectScreenName -> [Widget ConnectScreenName]
-drawConnectScreen f = [C.vCenter $ C.hCenter form]
-  where
-    form = B.border $ padTop (Pad 1) $ hLimit 40 $ renderForm f
-
-connectScreen :: App (Form HostPort e ConnectScreenName) e ConnectScreenName
-connectScreen =
-  App
-    { appDraw = drawConnectScreen,
-      appHandleEvent = \s ev ->
-        case ev of
-          VtyEvent V.EvResize {} -> continue s
-          VtyEvent (V.EvKey V.KEsc []) -> halt s
-          VtyEvent (V.EvKey V.KEnter []) -> halt s
-          _ -> do
-            s' <- handleFormEvent ev s
-
-            -- Example of external validation:
-            continue $
-              setFieldValid
-                (formState s' ^. port >= 0)
-                PortField
-                s',
-      appChooseCursor = focusRingCursor formFocus,
-      appStartEvent = return,
-      appAttrMap = const theMap
-    }
 
 data VibeMenuName
   = MessageLog
@@ -273,36 +230,17 @@ deleteDeviceByIndex devIx l =
     Just listIndex -> L.listRemove listIndex l
     Nothing -> l
 
-getHostPort :: IO (String, Int, V.Vty)
+-- TODO switch to optparse applicative maybe
+getHostPort :: IO HostPort
 getHostPort = do
   args <- getArgs
-  initialVty <- buildVty
-  case args of
-    [host, port] -> pure (host, read port, initialVty)
-    _ -> do
-      let initialHost = "127.0.0.1"
-          connectForm =
-            setFieldValid True PortField $
-              mkForm initialHostPort
-          initialHostPort = HostPort initialHost 12345
-
-      (connectForm', vty') <-
-        customMainWithVty
-          initialVty
-          buildVty
-          Nothing
-          connectScreen
-          connectForm
-      if allFieldsValid connectForm'
-        then do
-          putStrLn "The final form inputs were valid."
-          let HostPort host port = formState connectForm'
-          pure (T.unpack host, port, vty')
-        else do
-          putStrLn $
-            "The final form had invalid inputs: "
-              <> show (invalidFields connectForm')
-          exitFailure
+  pure $ case args of
+    [host, port] -> HostPort host (read port)
+    [port] -> HostPort defaultHost (read port)
+    [] -> HostPort defaultHost defaultPort
+  where
+    defaultHost = "127.0.0.1"
+    defaultPort = 12345
 
 buildVty = do
   v <- V.mkVty =<< V.standardIOConfig
@@ -311,8 +249,10 @@ buildVty = do
 
 main :: IO ()
 main = do
-  (host, port, vty) <- getHostPort
+  HostPort host port <- getHostPort
   cmdChan <- newBChan 30
+
+  vty <- buildVty
 
   let connector = BPWS.Connector host port
       initialState =
