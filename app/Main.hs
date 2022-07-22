@@ -72,6 +72,7 @@ import System.Environment
 import System.Exit (exitFailure)
 import System.IO
 import System.Process
+import Debug.Trace (traceM)
 
 -- This is needed because brick's editTextField widget uses Text rather than String
 -- That means we can't use a Connector as the Form state, because it uses string
@@ -449,7 +450,7 @@ handleCommands evChan cmdChan = do
             ++ ":"
             ++ show connector.wsConnectorPort
         BPWS.runClient connector \handle -> do
-          putStrLn "connected!"
+          hPutStrLn stderr "connected!"
           putMVar connected ()
           writeBChan evChan EvConnected
           handleMsgs handle evChan buttplugCmdsChan
@@ -471,6 +472,7 @@ handleMsgs handle evChan buttplugCmdsChan = do
   Buttplug.sendMessage handle $ MsgRequestServerInfo 1 "VibeMenu" clientMessageVersion
   [servInfo@(MsgServerInfo 1 _ _ _)] <- Buttplug.receiveMessages handle
   writeBChan evChan $ ReceivedMessage servInfo
+  traceM "here 1"
 
   mapConcurrently_
     id
