@@ -159,14 +159,18 @@ connectScreenHandleEvent ::
   EventM VibeMenuName (Next AppState)
 connectScreenHandleEvent s cmdChan ev =
   case ev of
-    VtyEvent V.EvResize {} -> continue $ sameState
-    VtyEvent (V.EvKey V.KEsc []) -> halt $ sameState
+    VtyEvent V.EvResize {} -> continue sameState
+    VtyEvent (V.EvKey V.KEsc []) -> halt sameState
     VtyEvent (V.EvKey V.KEnter []) -> do
-      -- TODO
-      -- check validity
-      -- tell bg thread to connect
-      -- switch to connecting state
-      undefined
+      if allFieldsValid s then do
+        let HostPort host port = formState s
+            connector = BPWS.Connector (T.unpack host) port
+        liftIO $ writeBChan cmdChan $ CmdConnect connector
+        continue $ AppState cmdChan ConnectingScreenState
+      else do
+        -- TODO signal error to user in ui
+        liftIO $ hPutStrLn stderr "Invalid form, check the port is a number."
+        continue sameState
     _ -> do
       form' <- handleFormEvent ev s
 
@@ -260,9 +264,7 @@ sendCommand chan = liftIO . writeBChan chan
 connectingStateHandleEvent :: BChan Command -> BrickEvent VibeMenuName CustomEvent -> EventM VibeMenuName (Next AppState)
 connectingStateHandleEvent cmdChan = \case
   AppEvent EvConnected -> do
-    -- TODO
-    -- switch to MainScreenState with appropriate initial state
-    undefined
+    continue $ AppState cmdChan (MainScreenState initialMainScreenState)
   VtyEvent (V.EvKey (V.KChar 'q') []) -> halt $ AppState cmdChan ConnectingScreenState
   _ -> continue $ AppState cmdChan ConnectingScreenState
 
@@ -449,6 +451,7 @@ handleCommands evChan cmdChan = do
         BPWS.runClient connector \handle -> do
           putStrLn "connected!"
           putMVar connected ()
+          writeBChan evChan EvConnected
           handleMsgs handle evChan buttplugCmdsChan
           pure ()
         takeMVar connected
