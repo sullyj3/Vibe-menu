@@ -328,7 +328,6 @@ connect connector buttplugCmdChan evChan = do
     "Connecting to: " <> connector.wsConnectorHost <> ":" <> show connector.wsConnectorPort
   -- TODO handle exceptions
   BPWS.runClient connector \handle -> do
-    putStrLn "connected!"
     writeBChan evChan EvConnected
     sendReceiveBPMessages handle evChan buttplugCmdChan
 
