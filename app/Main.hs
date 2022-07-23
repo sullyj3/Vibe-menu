@@ -110,13 +110,13 @@ data Command
   = BPCommand ButtplugCommand
   | CmdConnect BPWS.Connector
 
-data VibeMenuState = VibeMenuState
+data MainScreenState = VibeMenuState
   { _messageLog :: L.List VibeMenuName Message,
     _devices :: L.List VibeMenuName Device,
     _cmdChan :: BChan Command
   }
 
-makeLenses ''VibeMenuState
+makeLenses ''MainScreenState
 
 -- events from bg thread to UI thread
 data VibeMenuEvent = EvConnected | BPEvent BPSessionEvent
@@ -161,8 +161,8 @@ listDrawElement sel a =
    in (selStr $ show a)
 
 vibeMenu ::
-  (VibeMenuState -> EventM VibeMenuName VibeMenuState) ->
-  App VibeMenuState VibeMenuEvent VibeMenuName
+  (MainScreenState -> EventM VibeMenuName MainScreenState) ->
+  App MainScreenState VibeMenuEvent VibeMenuName
 vibeMenu startEvent =
   App
     { appDraw = drawVibeMenu,
@@ -173,9 +173,9 @@ vibeMenu startEvent =
     }
 
 vibeMenuHandleEvent ::
-  VibeMenuState ->
+  MainScreenState ->
   BrickEvent VibeMenuName VibeMenuEvent ->
-  EventM VibeMenuName (Next VibeMenuState)
+  EventM VibeMenuName (Next MainScreenState)
 vibeMenuHandleEvent s = \case
   VtyEvent e -> case e of
     V.EvResize {} -> continue s
