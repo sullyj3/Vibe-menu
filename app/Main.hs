@@ -160,13 +160,15 @@ listDrawElement sel a =
           else str s
    in (selStr $ show a)
 
-vibeMenu :: App VibeMenuState VibeMenuEvent VibeMenuName
-vibeMenu =
+vibeMenu ::
+  (VibeMenuState -> EventM VibeMenuName VibeMenuState) ->
+  App VibeMenuState VibeMenuEvent VibeMenuName
+vibeMenu startEvent =
   App
     { appDraw = drawVibeMenu,
       appHandleEvent = vibeMenuHandleEvent,
       appChooseCursor = neverShowCursor, -- TODO
-      appStartEvent = return,
+      appStartEvent = startEvent,
       appAttrMap = const theMap
     }
 
@@ -201,7 +203,7 @@ vibeMenuHandleEvent s = \case
       continue $ s & devices %~ listAppend dev
     EvDeviceRemoved (fromIntegral -> ix) ->
       continue $ s & devices %~ deleteDeviceByIndex ix
-  AppEvent EvConnected -> error "not implemented"
+  AppEvent EvConnected -> continue s --todo
   _ -> continue s
   where
     sendCommand :: Command -> EventM n ()
@@ -269,10 +271,16 @@ main = do
           (L.list DeviceMenu mempty 1)
           cmdChan
 
+      startEvent s = do
+        liftIO $ writeBChan cmdChan (CmdConnect connector) 
+        pure s
+
   evChan :: BChan VibeMenuEvent <- newBChan 10
   scoped \scope -> do
     fork scope $ workerThread connector cmdChan evChan
-    uiThread <- fork scope $ customMain vty buildVty (Just evChan) vibeMenu initialState
+    uiThread <-
+      fork scope $
+        customMain vty buildVty (Just evChan) (vibeMenu startEvent) initialState
     atomically $ await uiThread
   pure ()
 
@@ -281,18 +289,13 @@ workerThread :: BPWS.Connector -> BChan Command -> BChan VibeMenuEvent -> IO ()
 workerThread connector cmdChan evChan = do
   buttplugCmdChan <- newBChan 30
   scoped \scope -> do
-    fork_ scope $ handleCommands cmdChan buttplugCmdChan
-    connectThread <- fork scope $ connect connector buttplugCmdChan evChan
-    atomically $ await connectThread
-
--- Recieve and process commands from the UI
-handleCommands :: BChan Command -> BChan ButtplugCommand -> IO b
-handleCommands cmdChan buttplugCmdChan =
-  forever $
-    readBChan cmdChan >>= \case
-      -- for now connection happens once automatically at the start of the program
-      CmdConnect _ -> error "not implemented"
-      BPCommand bpCmd -> writeBChan buttplugCmdChan bpCmd
+    forever $
+      readBChan cmdChan >>= \case
+        -- for now connection happens once automatically at the start of the program
+        CmdConnect _ -> do
+          fork scope $ connect connector buttplugCmdChan evChan
+          pure ()
+        BPCommand bpCmd -> writeBChan buttplugCmdChan bpCmd
 
 -- Background thread which handles communication with the server
 connect :: BPWS.Connector -> BChan ButtplugCommand -> BChan VibeMenuEvent -> IO ()
@@ -302,6 +305,7 @@ connect connector buttplugCmdChan evChan = do
   -- TODO handle exceptions
   BPWS.runClient connector \handle -> do
     putStrLn "connected!"
+    writeBChan evChan EvConnected
     sendReceiveBPMessages handle evChan buttplugCmdChan
 
 sendReceiveBPMessages ::
