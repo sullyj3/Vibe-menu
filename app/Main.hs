@@ -2,9 +2,9 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedRecordUpdate #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -102,11 +102,17 @@ data VibeMenuName
 data ButtplugCommand
   = CmdStopAll
   | CmdVibrate Word Double
+  deriving (Show)
+
+-- TODO give BPWS.Connector a `Show` instance so we can derive `Show` here
+data Command
+  = BPCommand ButtplugCommand
+  | CmdConnect BPWS.Connector
 
 data VibeMenuState = VibeMenuState
   { _messageLog :: L.List VibeMenuName Message,
     _devices :: L.List VibeMenuName Device,
-    _cmdChan :: BChan ButtplugCommand
+    _cmdChan :: BChan Command
   }
 
 makeLenses ''VibeMenuState
@@ -160,7 +166,7 @@ vibeMenu =
       appAttrMap = const theMap
     }
 
-sendCommand :: BChan ButtplugCommand -> ButtplugCommand -> EventM n ()
+sendCommand :: BChan Command -> Command -> EventM n ()
 sendCommand chan = liftIO . writeBChan chan
 
 vibeMenuHandleEvent ::
@@ -173,7 +179,7 @@ vibeMenuHandleEvent s = \case
     V.EvKey V.KEsc [] -> halt s
     V.EvKey (V.KChar c) [] -> case c of
       's' -> do
-        sendCommand (s ^. cmdChan) CmdStopAll
+        sendCommand (s ^. cmdChan) (BPCommand CmdStopAll)
         continue s
       'q' -> halt s
       _
@@ -183,7 +189,7 @@ vibeMenuHandleEvent s = \case
                     if c == '0'
                       then 1
                       else fromIntegral (ord c - 48) / 10
-              sendCommand (s ^. cmdChan) (CmdVibrate devIndex strength)
+              sendCommand (s ^. cmdChan) (BPCommand $ CmdVibrate devIndex strength)
             continue s
         | otherwise -> continue s
     -- V.EvKey (V.KChar c) []
@@ -252,7 +258,7 @@ buildVty = do
 main :: IO ()
 main = do
   HostPort host port <- getHostPort
-  buttplugCmdChan <- newBChan 30
+  cmdChan <- newBChan 30
 
   vty <- buildVty
 
@@ -261,29 +267,47 @@ main = do
         VibeMenuState
           (L.list MessageLog mempty 1)
           (L.list DeviceMenu mempty 1)
-          buttplugCmdChan
+          cmdChan
 
   evChan <- newBChan 10
   race_
-    (connect connector buttplugCmdChan evChan)
+    (workerThread connector cmdChan evChan)
     (customMain vty buildVty (Just evChan) vibeMenu initialState)
   pure ()
 
+-- Main background thread
+workerThread :: BPWS.Connector -> BChan Command -> BChan BPSessionEvent -> IO ()
+workerThread connector cmdChan evChan = do
+  buttplugCmdChan <- newBChan 30
+  race_
+    (handleCommands cmdChan buttplugCmdChan)
+    (connect connector buttplugCmdChan evChan)
+
+-- Recieve and process commands from the UI
+handleCommands :: BChan Command -> BChan ButtplugCommand -> IO b
+handleCommands cmdChan buttplugCmdChan =
+  forever $
+    readBChan cmdChan >>= \case
+      -- for now connection happens once automatically at the start of the program
+      CmdConnect _ -> error "not implemented"
+      BPCommand bpCmd -> writeBChan buttplugCmdChan bpCmd
+
+-- Background thread which handles communication with the server
 connect connector buttplugCmdChan evChan = do
   putStrLn $
     "Connecting to: " <> connector.wsConnectorHost <> ":" <> show connector.wsConnectorPort
   -- TODO handle exceptions
   BPWS.runClient connector \handle -> do
     putStrLn "connected!"
-    handleMsgs handle evChan buttplugCmdChan
+    sendReceiveBPMessages handle evChan buttplugCmdChan
 
--- Background threads which handle communication with the server
-handleMsgs ::
+sendReceiveBPMessages ::
   Buttplug.Handle ->
   BChan BPSessionEvent ->
   BChan ButtplugCommand ->
   IO ()
-handleMsgs handle evChan buttplugCmdChan = do
+sendReceiveBPMessages handle evChan buttplugCmdChan = do
+  -- TODO factor out handleshake
   -- block while we perform handshake
   Buttplug.sendMessage handle $ MsgRequestServerInfo 1 "VibeMenu" clientMessageVersion
   [servInfo@(MsgServerInfo 1 _ _ _)] <- Buttplug.receiveMessages handle
@@ -298,11 +322,12 @@ handleMsgs handle evChan buttplugCmdChan = do
         |> S.concatMap (toEvents .> S.fromFoldable)
         |> S.mapM_ (writeBChan evChan),
       uiCmds buttplugCmdChan
-        |> S.mapM_ (handleCmd handle)
+        |> S.mapM_ (handleButtplugCommand handle)
     ]
 
-handleCmd :: Buttplug.Handle -> ButtplugCommand -> IO ()
-handleCmd con = \case
+-- forward messages from the UI to the buttplug server
+handleButtplugCommand :: Buttplug.Handle -> ButtplugCommand -> IO ()
+handleButtplugCommand con = \case
   CmdStopAll -> Buttplug.sendMessage con $ MsgStopAllDevices 1
   CmdVibrate devIx speed ->
     Buttplug.sendMessage con $
