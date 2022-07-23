@@ -110,9 +110,20 @@ data Command
   = BPCommand ButtplugCommand
   | CmdConnect BPWS.Connector
 
-data AppState = MainScreen MainScreenState | ConnectingScreen
+data MainScreenState = MainScreenState
+  { _messageLog :: L.List VibeMenuName Message,
+    _devices :: L.List VibeMenuName Device
+  }
 
-mainScreenState :: Lens' AppState MainScreenState
+makeLenses ''MainScreenState
+
+data ScreenState = MainScreen MainScreenState | ConnectingScreen
+
+data AppState = AppState {_cmdChan :: BChan Command, _screenState :: ScreenState}
+
+makeLenses ''AppState
+
+mainScreenState :: Lens' ScreenState MainScreenState
 mainScreenState = lens get set
   where
     get = \case
@@ -125,19 +136,6 @@ mainScreenState = lens get set
         error
           "BUG: mainScreenState: tried to write MainScreenState to incorrect constructor field"
 
-data MainScreenState = MainScreenState
-  { _messageLog :: L.List VibeMenuName Message,
-    _devices :: L.List VibeMenuName Device,
-    _cmdChan :: BChan Command
-  }
-
--- { _messageLog :: L.List VibeMenuName Message,
---   _devices :: L.List VibeMenuName Device,
---   _cmdChan :: BChan Command
--- }
-
-makeLenses ''MainScreenState
-
 -- events from bg thread to UI thread
 data VibeMenuEvent = EvConnected | BPEvent BPSessionEvent
 
@@ -148,10 +146,17 @@ data BPSessionEvent
   | EvDeviceAdded Device
   | EvDeviceRemoved Word
 
+drawVibeMenu s = case s ^. screenState of
+  ConnectingScreen -> drawConnectingScreen s
+  MainScreen {} -> drawMainScreen s
+
+drawConnectingScreen :: AppState -> [Widget VibeMenuName]
+drawConnectingScreen s = [txt "Connecting..."]
+
 drawMainScreen :: AppState -> [Widget VibeMenuName]
 drawMainScreen appState = [ui]
   where
-    s = appState ^. mainScreenState
+    s = appState ^. screenState . mainScreenState
     header = withAttr "header" . txtWrap
     title = padBottom (Pad 1) $ header "VibeMenu"
     deviceMenu =
@@ -187,12 +192,29 @@ vibeMenu ::
   App AppState VibeMenuEvent VibeMenuName
 vibeMenu startEvent =
   App
-    { appDraw = drawMainScreen,
-      appHandleEvent = mainScreenHandleEvent,
+    { appDraw = drawVibeMenu,
+      appHandleEvent = vibeMenuHandleEvent,
       appChooseCursor = neverShowCursor, -- TODO
       appStartEvent = startEvent,
       appAttrMap = const theMap
     }
+
+vibeMenuHandleEvent s@(AppState _ screen) ev = case screen of
+  ConnectingScreen -> connectingScreenHandleEvent s ev
+  MainScreen {} -> mainScreenHandleEvent s ev
+
+connectingScreenHandleEvent ::
+  AppState ->
+  BrickEvent VibeMenuName VibeMenuEvent ->
+  EventM VibeMenuName (Next AppState)
+connectingScreenHandleEvent s = \case
+  AppEvent EvConnected -> continue $ s & screenState .~ MainScreen initialMainScreenState
+  _ -> continue s
+  where
+    initialMainScreenState =
+      MainScreenState
+        (L.list MessageLog mempty 1)
+        (L.list DeviceMenu mempty 1)
 
 mainScreenHandleEvent ::
   AppState ->
@@ -213,26 +235,26 @@ mainScreenHandleEvent s = \case
             continue s
         | otherwise -> continue s
     e -> do
-      handleEventLensed s (mainScreenState . devices) L.handleListEvent e >>= continue
+      handleEventLensed s (screenState . mainScreenState . devices) L.handleListEvent e >>= continue
   AppEvent (BPEvent e) -> case e of
     ReceivedMessage msg ->
       continue $
         s
-          & mainScreenState . messageLog
+          & screenState . mainScreenState . messageLog
             %~ (listAppend msg >>> L.listMoveToEnd)
     ReceivedDeviceList devs ->
-      continue $ s & mainScreenState . devices .~ L.list DeviceMenu (Vec.fromList devs) 1
+      continue $ s & screenState . mainScreenState . devices .~ L.list DeviceMenu (Vec.fromList devs) 1
     EvDeviceAdded dev@(Device devName (fromIntegral -> ix) _) ->
-      continue $ s & mainScreenState . devices %~ listAppend dev
+      continue $ s & screenState . mainScreenState . devices %~ listAppend dev
     EvDeviceRemoved (fromIntegral -> ix) ->
-      continue $ s & mainScreenState . devices %~ deleteDeviceByIndex ix
+      continue $ s & screenState . mainScreenState . devices %~ deleteDeviceByIndex ix
   AppEvent EvConnected -> continue s -- todo
   _ -> continue s
   where
     sendCommand :: Command -> EventM n ()
-    sendCommand = liftIO . writeBChan (s ^. mainScreenState . cmdChan)
+    sendCommand = liftIO . writeBChan (s ^. cmdChan)
 
-    selectedDevice = s ^. mainScreenState . devices & L.listSelectedElement
+    selectedDevice = s ^. screenState . mainScreenState . devices & L.listSelectedElement
 
     withSelectedDevice ::
       (Int -> Device -> EventM VibeMenuName ()) ->
@@ -288,12 +310,7 @@ main = do
   vty <- buildVty
 
   let connector = BPWS.Connector host port
-      initialState =
-        MainScreen $
-          MainScreenState
-            (L.list MessageLog mempty 1)
-            (L.list DeviceMenu mempty 1)
-            cmdChan
+      initialState = AppState cmdChan ConnectingScreen
 
       startEvent s = do
         liftIO $ writeBChan cmdChan (CmdConnect connector)
