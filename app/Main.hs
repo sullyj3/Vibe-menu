@@ -63,8 +63,7 @@ import Flow
 import Graphics.Vty qualified as V
 import Lens.Micro ((%~), (&), (.~), (^.))
 import Lens.Micro.TH
-import Streamly hiding ((<=>))
-import Streamly.Prelude (nil, (|:))
+import Streamly.Prelude (nil, (|:), IsStream)
 import Streamly.Prelude qualified as S
 import System.Environment
 import System.Exit (exitFailure)
@@ -166,9 +165,6 @@ vibeMenu =
       appAttrMap = const theMap
     }
 
-sendCommand :: BChan Command -> Command -> EventM n ()
-sendCommand chan = liftIO . writeBChan chan
-
 vibeMenuHandleEvent ::
   VibeMenuState ->
   BrickEvent VibeMenuName BPSessionEvent ->
@@ -179,7 +175,7 @@ vibeMenuHandleEvent s = \case
     V.EvKey V.KEsc [] -> halt s
     V.EvKey (V.KChar c) [] -> case c of
       's' -> do
-        sendCommand (s ^. cmdChan) (BPCommand CmdStopAll)
+        sendCommand $ BPCommand CmdStopAll
         continue s
       'q' -> halt s
       _
@@ -189,20 +185,9 @@ vibeMenuHandleEvent s = \case
                     if c == '0'
                       then 1
                       else fromIntegral (ord c - 48) / 10
-              sendCommand (s ^. cmdChan) (BPCommand $ CmdVibrate devIndex strength)
+              sendCommand $ BPCommand $ CmdVibrate devIndex strength
             continue s
         | otherwise -> continue s
-    -- V.EvKey (V.KChar c) []
-    --   | '0' <= c && c <= '9' -> do
-    --     withSelectedDevice \(_, Device _ devIndex _) -> do
-    --        let strength = if c == '0' then 1
-    --                                   else fromIntegral (ord c - 48) / 10
-    --        sendCommand (s ^. cmdChan) (CmdVibrate devIndex strength)
-    --     continue s
-    --   | c == 's' -> do
-    --     sendCommand (s ^. cmdChan) CmdStopAll
-    --     continue s
-    --   | otherwise -> continue s
     e -> handleEventLensed s devices L.handleListEvent e >>= continue
   AppEvent e -> case e of
     ReceivedMessage msg ->
@@ -218,6 +203,8 @@ vibeMenuHandleEvent s = \case
       continue $ s & devices %~ deleteDeviceByIndex ix
   _ -> continue s
   where
+    sendCommand :: Command -> EventM n ()
+    sendCommand = liftIO . writeBChan (s ^. cmdChan)
     selectedDevice = s ^. devices & L.listSelectedElement
 
     withSelectedDevice ::
@@ -321,7 +308,7 @@ sendReceiveBPMessages handle evChan buttplugCmdChan = do
       buttplugMessages handle
         |> S.concatMap (toEvents .> S.fromFoldable)
         |> S.mapM_ (writeBChan evChan),
-      uiCmds buttplugCmdChan
+      (S.repeatM . readBChan) buttplugCmdChan
         |> S.mapM_ (handleButtplugCommand handle)
     ]
 
@@ -332,9 +319,6 @@ handleButtplugCommand con = \case
   CmdVibrate devIx speed ->
     Buttplug.sendMessage con $
       MsgVibrateCmd 1 devIx [Vibrate 0 speed]
-
-uiCmds :: (IsStream t) => BChan ButtplugCommand -> t IO ButtplugCommand
-uiCmds chan = S.repeatM (readBChan chan)
 
 -- Produces all messages that come in through a buttplug connection
 buttplugMessages ::
