@@ -59,6 +59,7 @@ import Data.Foldable (traverse_)
 import Data.Maybe (catMaybes)
 import Data.Semigroup (First (..))
 import Data.Text qualified as T
+import Data.Text (Text)
 import Data.Vector (Vector)
 import Data.Vector qualified as Vec
 import Graphics.Vty qualified as V
@@ -76,7 +77,7 @@ data ConnectScreenName
   | PortField
   deriving (Eq, Ord, Show)
 
-data HostPort = HostPort {_host :: String, _port :: Int}
+data HostPort = HostPort {_host :: Text, _port :: Int}
   deriving (Show, Eq)
 
 makeLenses ''HostPort
@@ -114,6 +115,20 @@ data MainScreenState = MainScreenState
   { _messageLog :: L.List VibeMenuName Message,
     _devices :: L.List VibeMenuName Device
   }
+
+-- type ConnectForm = Form HostPort AppEvent VibeMenuName
+
+-- mkForm :: HostPort -> Form HostPort e VibeMenuName
+-- mkForm =
+--   let label s w =
+--         padBottom (Pad 1) $
+--           vLimit 1 (hLimit 15 $ str s <+> fill ' ') <+> w
+--    in newForm
+--         [ label "Host"
+--             @@= editTextField host HostField (Just 1),
+--           label "Port"
+--             @@= editShowableField port PortField
+--         ]
 
 makeLenses ''MainScreenState
 
@@ -290,7 +305,7 @@ getHostPort :: IO HostPort
 getHostPort = do
   args <- getArgs
   pure $ case args of
-    [host, port] -> HostPort host (read port)
+    [host, port] -> HostPort (T.pack host) (read port)
     [port] -> HostPort defaultHost (read port)
     [] -> HostPort defaultHost defaultPort
   where
@@ -309,7 +324,7 @@ main = do
 
   vty <- buildVty
 
-  let connector = BPWS.Connector host port
+  let connector = BPWS.Connector (T.unpack host) port
       initialState = AppState cmdChan ConnectingScreen
 
       startEvent s = do
