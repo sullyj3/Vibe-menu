@@ -63,7 +63,7 @@ import Data.Vector (Vector)
 import Data.Vector qualified as Vec
 import Graphics.Vty qualified as V
 import Ki
-import Lens.Micro ((%~), (&), (.~), (^.))
+import Lens.Micro (Lens', lens, set, (%~), (&), (.~), (^.))
 import Lens.Micro.TH
 import Streamly.Prelude (IsStream, nil, (|:))
 import Streamly.Prelude qualified as S
@@ -109,6 +109,21 @@ data ButtplugCommand
 data Command
   = BPCommand ButtplugCommand
   | CmdConnect BPWS.Connector
+
+data AppState = MainScreenState MainScreenState | ConnectingScreen
+
+mainScreenState :: Lens' AppState MainScreenState
+mainScreenState = lens get set
+  where
+    get = \case
+      MainScreenState mss -> mss
+      _ -> error "BUG: mainScreenState: tried to get MainScreenState from incorrect constructor"
+
+    set appState mss = case appState of
+      MainScreenState _ -> MainScreenState mss
+      _ ->
+        error
+          "BUG: mainScreenState: tried to write MainScreenState to incorrect constructor field"
 
 data MainScreenState = VibeMenuState
   { _messageLog :: L.List VibeMenuName Message,
