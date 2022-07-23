@@ -58,8 +58,8 @@ import Data.Char (digitToInt, isDigit, ord)
 import Data.Foldable (traverse_)
 import Data.Maybe (catMaybes)
 import Data.Semigroup (First (..))
-import Data.Text qualified as T
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Vector (Vector)
 import Data.Vector qualified as Vec
 import Graphics.Vty qualified as V
@@ -71,11 +71,6 @@ import Streamly.Prelude qualified as S
 import System.Environment
 import System.Exit (exitFailure)
 import System.Process
-
-data ConnectScreenName
-  = HostField
-  | PortField
-  deriving (Eq, Ord, Show)
 
 data HostPort = HostPort {_host :: Text, _port :: Int}
   deriving (Show, Eq)
@@ -98,6 +93,8 @@ theMap =
 data VibeMenuName
   = MessageLog
   | DeviceMenu
+  | HostField
+  | PortField
   deriving (Eq, Ord, Show)
 
 -- Commands from the UI thread to the background thread
@@ -111,28 +108,41 @@ data Command
   = BPCommand ButtplugCommand
   | CmdConnect BPWS.Connector
 
+-- events from bg thread to UI thread
+data VibeMenuEvent = EvConnected | BPEvent BPSessionEvent
+
+-- events from buttplug server
+data BPSessionEvent
+  = ReceivedMessage Message
+  | ReceivedDeviceList [Device]
+  | EvDeviceAdded Device
+  | EvDeviceRemoved Word
+
 data MainScreenState = MainScreenState
   { _messageLog :: L.List VibeMenuName Message,
     _devices :: L.List VibeMenuName Device
   }
 
--- type ConnectForm = Form HostPort AppEvent VibeMenuName
+type ConnectForm = Form HostPort VibeMenuEvent VibeMenuName
 
--- mkForm :: HostPort -> Form HostPort e VibeMenuName
--- mkForm =
---   let label s w =
---         padBottom (Pad 1) $
---           vLimit 1 (hLimit 15 $ str s <+> fill ' ') <+> w
---    in newForm
---         [ label "Host"
---             @@= editTextField host HostField (Just 1),
---           label "Port"
---             @@= editShowableField port PortField
---         ]
+mkForm :: HostPort -> Form HostPort e VibeMenuName
+mkForm =
+  let label s w =
+        padBottom (Pad 1) $
+          vLimit 1 (hLimit 15 $ str s <+> fill ' ') <+> w
+   in newForm
+        [ label "Host"
+            @@= editTextField host HostField (Just 1),
+          label "Port"
+            @@= editShowableField port PortField
+        ]
 
 makeLenses ''MainScreenState
 
-data ScreenState = MainScreen MainScreenState | ConnectingScreen
+data ScreenState
+  = ConnectScreen ConnectForm
+  | ConnectingScreen
+  | MainScreen MainScreenState
 
 data AppState = AppState {_cmdChan :: BChan Command, _screenState :: ScreenState}
 
@@ -151,15 +161,18 @@ mainScreenState = lens get set
         error
           "BUG: mainScreenState: tried to write MainScreenState to incorrect constructor field"
 
--- events from bg thread to UI thread
-data VibeMenuEvent = EvConnected | BPEvent BPSessionEvent
+connectScreenState :: Lens' ScreenState ConnectForm
+connectScreenState = lens get set
+  where
+    get = \case
+      ConnectScreen connectForm -> connectForm
+      _ -> error "BUG: connectScreenState: tried to get ConnectForm from incorrect constructor"
 
--- events from buttplug server
-data BPSessionEvent
-  = ReceivedMessage Message
-  | ReceivedDeviceList [Device]
-  | EvDeviceAdded Device
-  | EvDeviceRemoved Word
+    set appState connectForm = case appState of
+      ConnectScreen _ -> ConnectScreen connectForm
+      _ ->
+        error
+          "BUG: connectScreenState: tried to write ConnectForm to incorrect constructor field"
 
 drawVibeMenu s = case s ^. screenState of
   ConnectingScreen -> drawConnectingScreen s
@@ -213,6 +226,39 @@ vibeMenu startEvent =
       appStartEvent = startEvent,
       appAttrMap = const theMap
     }
+
+-- connectScreenHandleEvent ::
+--   AppState ->
+--   BrickEvent VibeMenuName VibeMenuEvent ->
+--   EventM VibeMenuName (Next AppState)
+-- connectScreenHandleEvent s ev =
+--   case ev of
+--     VtyEvent V.EvResize {} -> continue sameState
+--     VtyEvent (V.EvKey V.KEsc []) -> halt sameState
+--     VtyEvent (V.EvKey V.KEnter []) -> do
+--       if allFieldsValid $ s ^.
+--         then do
+--           let HostPort host port = formState s
+--               connector = BPWS.Connector (T.unpack host) port
+--           liftIO $ writeBChan cmdChan $ CmdConnect connector
+--           continue $ AppState cmdChan ConnectingScreenState
+--         else do
+--           -- TODO signal error to user in ui
+--           liftIO $ hPutStrLn stderr "Invalid form, check the port is a number."
+--           continue sameState
+--     _ -> do
+--       form' <- handleFormEvent ev s
+
+--       -- Example of external validation:
+--       continue $
+--         connectState $
+--           setFieldValid
+--             (formState form' ^. port >= 0)
+--             PortField
+--             form'
+--   where
+--     sameState = AppState cmdChan (ConnectScreenState s)
+--     connectState s' = AppState cmdChan (ConnectScreenState s')
 
 vibeMenuHandleEvent s@(AppState _ screen) ev = case screen of
   ConnectingScreen -> connectingScreenHandleEvent s ev
