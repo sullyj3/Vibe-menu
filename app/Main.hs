@@ -110,26 +110,30 @@ data Command
   = BPCommand ButtplugCommand
   | CmdConnect BPWS.Connector
 
-data AppState = MainScreenState MainScreenState | ConnectingScreen
+data AppState = MainScreen MainScreenState | ConnectingScreen
 
 mainScreenState :: Lens' AppState MainScreenState
 mainScreenState = lens get set
   where
     get = \case
-      MainScreenState mss -> mss
+      MainScreen mss -> mss
       _ -> error "BUG: mainScreenState: tried to get MainScreenState from incorrect constructor"
 
     set appState mss = case appState of
-      MainScreenState _ -> MainScreenState mss
+      MainScreen _ -> MainScreen mss
       _ ->
         error
           "BUG: mainScreenState: tried to write MainScreenState to incorrect constructor field"
 
-data MainScreenState = VibeMenuState
+data MainScreenState = MainScreenState
   { _messageLog :: L.List VibeMenuName Message,
     _devices :: L.List VibeMenuName Device,
     _cmdChan :: BChan Command
   }
+  -- { _messageLog :: L.List VibeMenuName Message,
+  --   _devices :: L.List VibeMenuName Device,
+  --   _cmdChan :: BChan Command
+  -- }
 
 makeLenses ''MainScreenState
 
@@ -281,7 +285,7 @@ main = do
 
   let connector = BPWS.Connector host port
       initialState =
-        VibeMenuState
+        MainScreenState
           (L.list MessageLog mempty 1)
           (L.list DeviceMenu mempty 1)
           cmdChan
