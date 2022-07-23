@@ -9,7 +9,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Main where
+module Main (main) where
 
 import Brick
 import Brick.AttrMap qualified as A
@@ -99,14 +99,14 @@ data VibeMenuName
   deriving (Eq, Ord, Show)
 
 -- Commands from the UI thread to the background thread
-data Command
+data ButtplugCommand
   = CmdStopAll
   | CmdVibrate Word Double
 
 data VibeMenuState = VibeMenuState
   { _messageLog :: L.List VibeMenuName Message,
     _devices :: L.List VibeMenuName Device,
-    _cmdChan :: BChan Command
+    _cmdChan :: BChan ButtplugCommand
   }
 
 makeLenses ''VibeMenuState
@@ -160,7 +160,7 @@ vibeMenu =
       appAttrMap = const theMap
     }
 
-sendCommand :: BChan Command -> Command -> EventM n ()
+sendCommand :: BChan ButtplugCommand -> ButtplugCommand -> EventM n ()
 sendCommand chan = liftIO . writeBChan chan
 
 vibeMenuHandleEvent ::
@@ -281,7 +281,7 @@ connect connector buttplugCmdChan evChan = do
 handleMsgs ::
   Buttplug.Handle ->
   BChan BPSessionEvent ->
-  BChan Command ->
+  BChan ButtplugCommand ->
   IO ()
 handleMsgs handle evChan buttplugCmdChan = do
   -- block while we perform handshake
@@ -301,14 +301,14 @@ handleMsgs handle evChan buttplugCmdChan = do
         |> S.mapM_ (handleCmd handle)
     ]
 
-handleCmd :: Buttplug.Handle -> Command -> IO ()
+handleCmd :: Buttplug.Handle -> ButtplugCommand -> IO ()
 handleCmd con = \case
   CmdStopAll -> Buttplug.sendMessage con $ MsgStopAllDevices 1
   CmdVibrate devIx speed ->
     Buttplug.sendMessage con $
       MsgVibrateCmd 1 devIx [Vibrate 0 speed]
 
-uiCmds :: (IsStream t) => BChan Command -> t IO Command
+uiCmds :: (IsStream t) => BChan ButtplugCommand -> t IO ButtplugCommand
 uiCmds chan = S.repeatM (readBChan chan)
 
 -- Produces all messages that come in through a buttplug connection
