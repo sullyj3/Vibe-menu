@@ -203,7 +203,7 @@ vibeMenuHandleEvent s = \case
       continue $ s & devices %~ listAppend dev
     EvDeviceRemoved (fromIntegral -> ix) ->
       continue $ s & devices %~ deleteDeviceByIndex ix
-  AppEvent EvConnected -> continue s --todo
+  AppEvent EvConnected -> continue s -- todo
   _ -> continue s
   where
     sendCommand :: Command -> EventM n ()
@@ -272,7 +272,7 @@ main = do
           cmdChan
 
       startEvent s = do
-        liftIO $ writeBChan cmdChan (CmdConnect connector) 
+        liftIO $ writeBChan cmdChan (CmdConnect connector)
         pure s
 
   evChan :: BChan VibeMenuEvent <- newBChan 10
@@ -314,27 +314,27 @@ sendReceiveBPMessages ::
   BChan ButtplugCommand ->
   IO ()
 sendReceiveBPMessages handle evChan buttplugCmdChan = do
-  -- TODO factor out handleshake
-  -- block while we perform handshake
-  Buttplug.sendMessage handle $ MsgRequestServerInfo 1 "VibeMenu" clientMessageVersion
-  [servInfo@(MsgServerInfo 1 _ _ _)] <- Buttplug.receiveMessages handle
+  servInfo <- handShake
   emitBPEvent $ ReceivedMessage servInfo
-
   scoped \scope -> do
     fork scope $ Buttplug.sendMessage handle $ MsgRequestDeviceList 2
     fork scope $ Buttplug.sendMessage handle $ MsgStartScanning 3
-    -- main loop
-    fork scope $
+    fork scope emitEvents
+    fork scope handleCmds
+    atomically $ awaitAll scope
+  where
+    handShake = do
+      Buttplug.sendMessage handle $ MsgRequestServerInfo 1 "VibeMenu" clientMessageVersion
+      [servInfo@(MsgServerInfo 1 _ _ _)] <- Buttplug.receiveMessages handle
+      pure servInfo
+    emitBPEvent = writeBChan evChan . BPEvent
+    emitEvents =
       S.mapM_ emitBPEvent $
         S.concatMap (S.fromFoldable . toEvents) $
           buttplugMessages handle
-    fork scope $
+    handleCmds =
       S.mapM_ (handleButtplugCommand handle) $
         (S.repeatM . readBChan) buttplugCmdChan
-
-    atomically $ awaitAll scope
-  where
-    emitBPEvent = writeBChan evChan . BPEvent
 
 -- forward messages from the UI to the buttplug server
 handleButtplugCommand :: Buttplug.Handle -> ButtplugCommand -> IO ()
