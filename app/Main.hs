@@ -6,6 +6,7 @@
 {-# LANGUAGE OverloadedRecordUpdate #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -117,6 +118,9 @@ data VibeMenuState = VibeMenuState
 makeLenses ''VibeMenuState
 
 -- events from bg thread to UI thread
+data VibeMenuEvent = EvConnected | BPEvent BPSessionEvent
+
+-- events from buttplug server
 data BPSessionEvent
   = ReceivedMessage Message
   | ReceivedDeviceList [Device]
@@ -155,7 +159,7 @@ listDrawElement sel a =
           else str s
    in (selStr $ show a)
 
-vibeMenu :: App VibeMenuState BPSessionEvent VibeMenuName
+vibeMenu :: App VibeMenuState VibeMenuEvent VibeMenuName
 vibeMenu =
   App
     { appDraw = drawVibeMenu,
@@ -167,7 +171,7 @@ vibeMenu =
 
 vibeMenuHandleEvent ::
   VibeMenuState ->
-  BrickEvent VibeMenuName BPSessionEvent ->
+  BrickEvent VibeMenuName VibeMenuEvent ->
   EventM VibeMenuName (Next VibeMenuState)
 vibeMenuHandleEvent s = \case
   VtyEvent e -> case e of
@@ -184,7 +188,7 @@ vibeMenuHandleEvent s = \case
             continue s
         | otherwise -> continue s
     e -> handleEventLensed s devices L.handleListEvent e >>= continue
-  AppEvent e -> case e of
+  AppEvent (BPEvent e) -> case e of
     ReceivedMessage msg ->
       continue $
         s
@@ -196,6 +200,7 @@ vibeMenuHandleEvent s = \case
       continue $ s & devices %~ listAppend dev
     EvDeviceRemoved (fromIntegral -> ix) ->
       continue $ s & devices %~ deleteDeviceByIndex ix
+  AppEvent EvConnected -> error "not implemented"
   _ -> continue s
   where
     sendCommand :: Command -> EventM n ()
@@ -263,14 +268,14 @@ main = do
           (L.list DeviceMenu mempty 1)
           cmdChan
 
-  evChan <- newBChan 10
+  evChan :: BChan VibeMenuEvent <- newBChan 10
   race_
     (workerThread connector cmdChan evChan)
     (customMain vty buildVty (Just evChan) vibeMenu initialState)
   pure ()
 
 -- Main background thread
-workerThread :: BPWS.Connector -> BChan Command -> BChan BPSessionEvent -> IO ()
+workerThread :: BPWS.Connector -> BChan Command -> BChan VibeMenuEvent -> IO ()
 workerThread connector cmdChan evChan = do
   buttplugCmdChan <- newBChan 30
   race_
@@ -287,6 +292,7 @@ handleCommands cmdChan buttplugCmdChan =
       BPCommand bpCmd -> writeBChan buttplugCmdChan bpCmd
 
 -- Background thread which handles communication with the server
+connect :: BPWS.Connector -> BChan ButtplugCommand -> BChan VibeMenuEvent -> IO ()
 connect connector buttplugCmdChan evChan = do
   putStrLn $
     "Connecting to: " <> connector.wsConnectorHost <> ":" <> show connector.wsConnectorPort
@@ -297,7 +303,7 @@ connect connector buttplugCmdChan evChan = do
 
 sendReceiveBPMessages ::
   Buttplug.Handle ->
-  BChan BPSessionEvent ->
+  BChan VibeMenuEvent ->
   BChan ButtplugCommand ->
   IO ()
 sendReceiveBPMessages handle evChan buttplugCmdChan = do
@@ -305,7 +311,7 @@ sendReceiveBPMessages handle evChan buttplugCmdChan = do
   -- block while we perform handshake
   Buttplug.sendMessage handle $ MsgRequestServerInfo 1 "VibeMenu" clientMessageVersion
   [servInfo@(MsgServerInfo 1 _ _ _)] <- Buttplug.receiveMessages handle
-  writeBChan evChan $ ReceivedMessage servInfo
+  emitBPEvent $ ReceivedMessage servInfo
 
   mapConcurrently_
     id
@@ -314,10 +320,12 @@ sendReceiveBPMessages handle evChan buttplugCmdChan = do
       -- main loop
       buttplugMessages handle
         |> S.concatMap (toEvents .> S.fromFoldable)
-        |> S.mapM_ (writeBChan evChan),
+        |> S.mapM_ emitBPEvent,
       (S.repeatM . readBChan) buttplugCmdChan
         |> S.mapM_ (handleButtplugCommand handle)
     ]
+  where
+    emitBPEvent = writeBChan evChan . BPEvent
 
 -- forward messages from the UI to the buttplug server
 handleButtplugCommand :: Buttplug.Handle -> ButtplugCommand -> IO ()
