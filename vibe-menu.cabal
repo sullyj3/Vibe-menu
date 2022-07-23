@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 732149091fccd4e91316cfaee1b9516a3bed5893ef1c8bee956c93cc78c9821f
+-- hash: 8d3c9e5cd1073757fa8eaf0c5e31f1af42715431e502960e4eb431fe95b6e7a9
 
 name:           vibe-menu
 version:        0.1.0.0
@@ -33,13 +33,14 @@ library
   hs-source-dirs:
       src
   build-depends:
-      async
-    , base >=4.7 && <5
+      base >=4.7 && <5
     , brick
     , buttplug-hs-core
+    , ki
     , microlens
     , microlens-th
     , process
+    , stm
     , streamly
     , text
     , vector
@@ -54,13 +55,14 @@ executable vibe-menu
       app
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      async
-    , base >=4.7 && <5
+      base >=4.7 && <5
     , brick
     , buttplug-hs-core
+    , ki
     , microlens
     , microlens-th
     , process
+    , stm
     , streamly
     , text
     , vector
@@ -77,13 +79,14 @@ test-suite vibe-menu-test
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      async
-    , base >=4.7 && <5
+      base >=4.7 && <5
     , brick
     , buttplug-hs-core
+    , ki
     , microlens
     , microlens-th
     , process
+    , stm
     , streamly
     , text
     , vector

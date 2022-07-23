@@ -51,9 +51,9 @@ import Buttplug.Core (Device (..), Message (..), Vibrate (..), clientMessageVers
 import Buttplug.Core.Handle qualified as Buttplug
 import Buttplug.Core.WebSockets qualified as BPWS
 import Control.Arrow ((>>>))
-import Control.Concurrent.Async
 import Control.Monad (forever)
 import Control.Monad.IO.Class
+import Control.Monad.STM (atomically)
 import Data.Char (digitToInt, isDigit, ord)
 import Data.Foldable (traverse_)
 import Data.Maybe (catMaybes)
@@ -62,6 +62,7 @@ import Data.Text qualified as T
 import Data.Vector (Vector)
 import Data.Vector qualified as Vec
 import Graphics.Vty qualified as V
+import Ki
 import Lens.Micro ((%~), (&), (.~), (^.))
 import Lens.Micro.TH
 import Streamly.Prelude (IsStream, nil, (|:))
@@ -269,18 +270,20 @@ main = do
           cmdChan
 
   evChan :: BChan VibeMenuEvent <- newBChan 10
-  race_
-    (workerThread connector cmdChan evChan)
-    (customMain vty buildVty (Just evChan) vibeMenu initialState)
+  scoped \scope -> do
+    fork scope $ workerThread connector cmdChan evChan
+    uiThread <- fork scope $ customMain vty buildVty (Just evChan) vibeMenu initialState
+    atomically $ await uiThread
   pure ()
 
 -- Main background thread
 workerThread :: BPWS.Connector -> BChan Command -> BChan VibeMenuEvent -> IO ()
 workerThread connector cmdChan evChan = do
   buttplugCmdChan <- newBChan 30
-  race_
-    (handleCommands cmdChan buttplugCmdChan)
-    (connect connector buttplugCmdChan evChan)
+  scoped \scope -> do
+    fork_ scope $ handleCommands cmdChan buttplugCmdChan
+    connectThread <- fork scope $ connect connector buttplugCmdChan evChan
+    atomically $ await connectThread
 
 -- Recieve and process commands from the UI
 handleCommands :: BChan Command -> BChan ButtplugCommand -> IO b
@@ -313,17 +316,19 @@ sendReceiveBPMessages handle evChan buttplugCmdChan = do
   [servInfo@(MsgServerInfo 1 _ _ _)] <- Buttplug.receiveMessages handle
   emitBPEvent $ ReceivedMessage servInfo
 
-  mapConcurrently_
-    id
-    [ Buttplug.sendMessage handle $ MsgRequestDeviceList 2,
-      Buttplug.sendMessage handle $ MsgStartScanning 3,
-      -- main loop
+  scoped \scope -> do
+    fork scope $ Buttplug.sendMessage handle $ MsgRequestDeviceList 2
+    fork scope $ Buttplug.sendMessage handle $ MsgStartScanning 3
+    -- main loop
+    fork scope $
       S.mapM_ emitBPEvent $
         S.concatMap (S.fromFoldable . toEvents) $
-          buttplugMessages handle,
+          buttplugMessages handle
+    fork scope $
       S.mapM_ (handleButtplugCommand handle) $
         (S.repeatM . readBChan) buttplugCmdChan
-    ]
+
+    atomically $ awaitAll scope
   where
     emitBPEvent = writeBChan evChan . BPEvent
 
