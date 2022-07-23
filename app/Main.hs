@@ -52,7 +52,7 @@ import Buttplug.Core.WebSockets qualified as BPWS
 import Control.Concurrent.Async
 import Control.Monad (forever)
 import Control.Monad.IO.Class
-import Data.Char (isDigit, ord)
+import Data.Char (digitToInt, isDigit, ord)
 import Data.Foldable (traverse_)
 import Data.Maybe (catMaybes)
 import Data.Semigroup (First (..))
@@ -63,7 +63,7 @@ import Flow
 import Graphics.Vty qualified as V
 import Lens.Micro ((%~), (&), (.~), (^.))
 import Lens.Micro.TH
-import Streamly.Prelude (nil, (|:), IsStream)
+import Streamly.Prelude (IsStream, nil, (|:))
 import Streamly.Prelude qualified as S
 import System.Environment
 import System.Exit (exitFailure)
@@ -180,12 +180,7 @@ vibeMenuHandleEvent s = \case
       'q' -> halt s
       _
         | isDigit c -> do
-            withSelectedDevice \(_, Device _ devIndex _) -> do
-              let strength =
-                    if c == '0'
-                      then 1
-                      else fromIntegral (ord c - 48) / 10
-              sendCommand $ BPCommand $ CmdVibrate devIndex strength
+            withSelectedDevice $ vibratePercent (outOfTen . digitToInt $ c)
             continue s
         | otherwise -> continue s
     e -> handleEventLensed s devices L.handleListEvent e >>= continue
@@ -205,14 +200,26 @@ vibeMenuHandleEvent s = \case
   where
     sendCommand :: Command -> EventM n ()
     sendCommand = liftIO . writeBChan (s ^. cmdChan)
+
     selectedDevice = s ^. devices & L.listSelectedElement
 
     withSelectedDevice ::
-      ((Int, Device) -> EventM VibeMenuName ()) ->
+      (Int -> Device -> EventM VibeMenuName ()) ->
       EventM VibeMenuName ()
     withSelectedDevice k = case selectedDevice of
-      Just d -> k d
+      Just (index, device) -> k index device
       Nothing -> pure ()
+
+    vibratePercent :: Double -> Int -> Device -> EventM n ()
+    vibratePercent speed _ (Device _ devIndex _) = do
+      sendCommand $ BPCommand $ CmdVibrate devIndex speed
+
+    -- convert a character digit between 1 and 9, to a float between 0.1 and 0.9
+    -- we also allow 0 to represent 10, mapping to 1. The idea is to use the
+    -- numeric row on a keyboard to indicate intensity
+    outOfTen = \case
+      0 -> 1
+      n -> fromIntegral n / 10
 
 listAppend :: e -> L.List n e -> L.List n e
 listAppend elt l =
