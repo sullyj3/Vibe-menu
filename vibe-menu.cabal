@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 564b4aeeba96e2c6ecbbdc1593252da6b22e2f1b8f64cdb154f025c373c89019
+-- hash: 732149091fccd4e91316cfaee1b9516a3bed5893ef1c8bee956c93cc78c9821f
 
 name:           vibe-menu
 version:        0.1.0.0
@@ -37,7 +37,6 @@ library
     , base >=4.7 && <5
     , brick
     , buttplug-hs-core
-    , flow
     , microlens
     , microlens-th
     , process
@@ -59,7 +58,6 @@ executable vibe-menu
     , base >=4.7 && <5
     , brick
     , buttplug-hs-core
-    , flow
     , microlens
     , microlens-th
     , process
@@ -83,7 +81,6 @@ test-suite vibe-menu-test
     , base >=4.7 && <5
     , brick
     , buttplug-hs-core
-    , flow
     , microlens
     , microlens-th
     , process

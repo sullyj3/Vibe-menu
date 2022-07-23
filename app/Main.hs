@@ -50,6 +50,7 @@ import Brick.Widgets.List qualified as L
 import Buttplug.Core (Device (..), Message (..), Vibrate (..), clientMessageVersion)
 import Buttplug.Core.Handle qualified as Buttplug
 import Buttplug.Core.WebSockets qualified as BPWS
+import Control.Arrow ((>>>))
 import Control.Concurrent.Async
 import Control.Monad (forever)
 import Control.Monad.IO.Class
@@ -60,7 +61,6 @@ import Data.Semigroup (First (..))
 import Data.Text qualified as T
 import Data.Vector (Vector)
 import Data.Vector qualified as Vec
-import Flow
 import Graphics.Vty qualified as V
 import Lens.Micro ((%~), (&), (.~), (^.))
 import Lens.Micro.TH
@@ -193,7 +193,7 @@ vibeMenuHandleEvent s = \case
       continue $
         s
           & messageLog
-            %~ (listAppend msg .> L.listMoveToEnd)
+            %~ (listAppend msg >>> L.listMoveToEnd)
     ReceivedDeviceList devs ->
       continue $ s & devices .~ L.list DeviceMenu (Vec.fromList devs) 1
     EvDeviceAdded dev@(Device devName (fromIntegral -> ix) _) ->
@@ -318,11 +318,11 @@ sendReceiveBPMessages handle evChan buttplugCmdChan = do
     [ Buttplug.sendMessage handle $ MsgRequestDeviceList 2,
       Buttplug.sendMessage handle $ MsgStartScanning 3,
       -- main loop
-      buttplugMessages handle
-        |> S.concatMap (toEvents .> S.fromFoldable)
-        |> S.mapM_ emitBPEvent,
-      (S.repeatM . readBChan) buttplugCmdChan
-        |> S.mapM_ (handleButtplugCommand handle)
+      S.mapM_ emitBPEvent $
+        S.concatMap (S.fromFoldable . toEvents) $
+          buttplugMessages handle,
+      S.mapM_ (handleButtplugCommand handle) $
+        (S.repeatM . readBChan) buttplugCmdChan
     ]
   where
     emitBPEvent = writeBChan evChan . BPEvent
