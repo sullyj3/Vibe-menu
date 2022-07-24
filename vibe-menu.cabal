@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 66a1a2f217c711ca59430ed84bcbd5cf64ec172b10f877ef2b137183ce6573f0
+-- hash: f176ba15a8e23949aae964c40b235ff8f4b8d4b882cbc54b1ce0d0aa019ddb7b
 
 name:           vibe-menu
 version:        0.1.0.0
@@ -29,6 +29,7 @@ library
   exposed-modules:
       ButtplugM
       HandleBrickEvent
+      Message
       Types
       View
   other-modules:
@@ -39,6 +40,8 @@ library
       base >=4.7 && <5
     , brick
     , buttplug-hs-core
+    , bytestring
+    , containers
     , exceptions
     , ki-unlifted
     , microlens
@@ -67,6 +70,8 @@ executable vibe-menu
       base >=4.7 && <5
     , brick
     , buttplug-hs-core
+    , bytestring
+    , containers
     , exceptions
     , ki-unlifted
     , microlens
@@ -97,6 +102,8 @@ test-suite vibe-menu-test
       base >=4.7 && <5
     , brick
     , buttplug-hs-core
+    , bytestring
+    , containers
     , exceptions
     , ki-unlifted
     , microlens
