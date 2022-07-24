@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e577b32e0de5f6c307afff86292da94c2c1e82e980354ebf5530238caa19a980
+-- hash: e3753c62259f3540002d2eeab6c171ac699763e531719a6661dc2c6388d2a2f5
 
 name:           vibe-menu
 version:        0.1.0.0
@@ -27,6 +27,7 @@ source-repository head
 
 library
   exposed-modules:
+      ButtplugM
       HandleBrickEvent
       Types
       View
@@ -41,10 +42,13 @@ library
     , ki
     , microlens
     , microlens-th
+    , mtl
     , process
     , stm
     , streamly
     , text
+    , transformers
+    , unliftio-core
     , vector
     , vty
   default-language: Haskell2010
@@ -63,10 +67,13 @@ executable vibe-menu
     , ki
     , microlens
     , microlens-th
+    , mtl
     , process
     , stm
     , streamly
     , text
+    , transformers
+    , unliftio-core
     , vector
     , vibe-menu
     , vty
@@ -87,10 +94,13 @@ test-suite vibe-menu-test
     , ki
     , microlens
     , microlens-th
+    , mtl
     , process
     , stm
     , streamly
     , text
+    , transformers
+    , unliftio-core
     , vector
     , vibe-menu
     , vty

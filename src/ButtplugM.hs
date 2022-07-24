@@ -5,6 +5,7 @@ module ButtplugM where
 
 -- start with a concrete monad, we'll figure out how to do a transformer later
 
+import Control.Monad.IO.Unlift
 import Control.Monad.Trans.Reader (ReaderT, runReaderT)
 import Control.Monad.Reader.Class
 import Control.Monad.IO.Class
@@ -20,6 +21,14 @@ import Buttplug.Core (Message)
 newtype ButtplugM a = ButtplugM { runButtplugM :: ReaderT (Handle, TVar Int) IO a }
   deriving (Functor, Applicative, Monad, MonadIO, MonadReader (Handle, TVar Int))
 
+-- TODO I have no idea if this is correct, I just followed the types
+instance MonadUnliftIO ButtplugM where
+  withRunInIO :: ((forall a. ButtplugM a -> IO a) -> IO b) -> ButtplugM b
+  withRunInIO f = do
+    (handle, msgIndexCounter) <- ask
+    liftIO $ f $ \bp -> runReaderT (runButtplugM bp) (handle, msgIndexCounter)
+    
+
 runButtplug :: Handle -> ButtplugM a -> IO a
 runButtplug handle bp = do
   msgIndexCounter <- newTVarIO 0
@@ -32,10 +41,10 @@ sendMessage :: Message -> ButtplugM ()
 sendMessage msg = withHandle $ \h -> Handle.sendMessage h msg
 
 receiveMessages :: ButtplugM [Message]
-receiveMessages = withHandle $ Handle.receiveMessages
+receiveMessages = withHandle Handle.receiveMessages
 
-handle :: ButtplugM Handle
-handle = fst <$> ask
+getHandle :: ButtplugM Handle
+getHandle = fst <$> ask
 
 withHandle :: (Handle -> IO a) -> ButtplugM a
-withHandle k = handle >>= liftIO . k
+withHandle k = getHandle >>= liftIO . k

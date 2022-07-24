@@ -32,6 +32,7 @@ dependencies:
 - stm
 - text
 - transformers
+- unliftio-core
 - vector
 - vty
 
