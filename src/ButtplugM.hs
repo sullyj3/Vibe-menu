@@ -22,8 +22,11 @@ import Control.Monad.Trans.Control
 import Control.Monad.Trans.Reader (ReaderT, runReaderT)
 import Data.IORef (IORef)
 
+-- TODO
 -- Eventually we'll automatically handle giving messages correct message ids.
 -- We'll present users with an api where they don't need to worry about id
+-- We should also maintain a list of available devices, and allow users to request them directly
+
 newtype ButtplugM a = ButtplugM {runButtplugM :: ReaderT (Handle, TVar Int) IO a}
   deriving newtype
     ( Functor,
