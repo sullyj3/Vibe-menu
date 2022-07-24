@@ -67,13 +67,14 @@ import Graphics.Vty qualified as V
 import Ki
 import Lens.Micro (Lens', lens, set, (%~), (&), (.~), (^.))
 import Lens.Micro.TH
+import Streamly.Data.Fold qualified as F
 import Streamly.Prelude (IsStream, nil, (|:))
 import Streamly.Prelude qualified as S
-import Streamly.Data.Fold qualified as F
 import System.Environment
 import System.Exit (exitFailure)
 import System.IO
 import System.Process
+import Data.String (IsString)
 
 data HostPort = HostPort {_host :: Text, _port :: Int}
   deriving (Show, Eq)
@@ -128,8 +129,8 @@ data MainScreenState = MainScreenState
 
 type ConnectForm = Form HostPort VibeMenuEvent VibeMenuName
 
-mkForm :: HostPort -> Form HostPort e VibeMenuName
-mkForm =
+mkConnectForm :: HostPort -> ConnectForm
+mkConnectForm =
   let label s w =
         padBottom (Pad 1) $
           vLimit 1 (hLimit 15 $ str s <+> fill ' ') <+> w
@@ -266,9 +267,10 @@ connectScreenHandleEvent s ev =
       let portValid = formState form' ^. port >= 0
       pure $ setFieldValid portValid PortField form'
 
-vibeMenuHandleEvent :: AppState
-                  -> BrickEvent VibeMenuName VibeMenuEvent
-                  -> EventM VibeMenuName (Next AppState)
+vibeMenuHandleEvent ::
+  AppState ->
+  BrickEvent VibeMenuName VibeMenuEvent ->
+  EventM VibeMenuName (Next AppState)
 vibeMenuHandleEvent s@(AppState _ screen) = handle s
   where
     handle = case screen of
@@ -358,55 +360,67 @@ deleteDeviceByIndex devIx l =
     Just listIndex -> L.listRemove listIndex l
     Nothing -> l
 
+hostPortToConnector (HostPort host port) = BPWS.Connector (T.unpack host) port
+
 -- TODO switch to optparse applicative maybe
-getHostPort :: IO HostPort
-getHostPort = do
+parseArgs :: IO (Maybe BPWS.Connector)
+parseArgs = do
   args <- getArgs
   pure $ case args of
-    [host, port] -> HostPort (T.pack host) (read port)
-    [port] -> HostPort defaultHost (read port)
-    [] -> HostPort defaultHost defaultPort
-  where
-    defaultHost = "127.0.0.1"
-    defaultPort = 12345
+    [host, port] -> Just $ BPWS.Connector host (read port)
+    [port] -> Just $ BPWS.Connector defaultHost (read port)
+    [] -> Nothing
+
+defaultHost :: IsString s => s
+defaultHost = "127.0.0.1"
+
+defaultPort :: Int
+defaultPort = 12345
+
+defaultHostPort = HostPort defaultHost defaultPort
 
 buildVty = do
   v <- V.mkVty =<< V.standardIOConfig
   V.setMode (V.outputIface v) V.Mouse True
   return v
 
+-- todo: proper logging with simple-logger
+-- https://hackage.haskell.org/package/simple-logger-0.1.1/docs/Control-Logger-Simple.html
 main :: IO ()
 main = do
-  HostPort host port <- getHostPort
+  mConnector <- parseArgs
+
   cmdChan <- newBChan 30
 
   vty <- buildVty
 
-  let connector = BPWS.Connector (T.unpack host) port
-      initialState = AppState cmdChan ConnectingScreen
-
-      startEvent s = do
-        liftIO $ writeBChan cmdChan (CmdConnect connector)
-        pure s
+  let (initialState, startEvent) = case mConnector of
+        Just connector ->
+          let connect s = do
+                liftIO $ writeBChan cmdChan (CmdConnect connector)
+                pure s
+           in (AppState cmdChan ConnectingScreen, connect)
+        Nothing -> (AppState cmdChan (ConnectScreen $ mkConnectForm defaultHostPort), pure)
 
   evChan :: BChan VibeMenuEvent <- newBChan 10
   scoped \scope -> do
-    fork scope $ workerThread connector cmdChan evChan
+    fork scope $ workerThread cmdChan evChan
     uiThread <-
       fork scope $
         customMain vty buildVty (Just evChan) (vibeMenu startEvent) initialState
     atomically $ await uiThread
   pure ()
 
+
 -- Main background thread
-workerThread :: BPWS.Connector -> BChan Command -> BChan VibeMenuEvent -> IO ()
-workerThread connector cmdChan evChan = do
+workerThread :: BChan Command -> BChan VibeMenuEvent -> IO ()
+workerThread cmdChan evChan = do
   buttplugCmdChan <- newBChan 30
   scoped \scope -> do
     forever $
       readBChan cmdChan >>= \case
         -- for now connection happens once automatically at the start of the program
-        CmdConnect _ -> do
+        CmdConnect connector -> do
           fork scope $ connect connector buttplugCmdChan evChan
           pure ()
         BPCommand bpCmd -> writeBChan buttplugCmdChan bpCmd
@@ -457,7 +471,6 @@ sendReceiveBPMessages handle evChan buttplugCmdChan = do
 
     -- TODO might be useful to have this in buttplug-hs-core
     displayBPErrorMsg msg code = "Buttplug error " <> T.pack (show code) <> ": " <> msg
-
 
 -- forward messages from the UI to the buttplug server
 handleButtplugCommand :: Buttplug.Handle -> ButtplugCommand -> IO ()
