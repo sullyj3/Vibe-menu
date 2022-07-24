@@ -158,17 +158,16 @@ sendReceiveBPMessages evChan buttplugCmdChan = do
     emitEvents =
       S.mapM_ emitBPEvent $
         S.concatMap (S.fromFoldable . toEvents) $
-          S.tap logErrors $
-            buttplugMessages
+          S.trace (liftIO . logErrors) buttplugMessages
 
     handleCmds :: ButtplugM ()
     handleCmds =
       S.mapM_ handleButtplugCommand $
         (S.repeatM . liftIO . readBChan) buttplugCmdChan
 
-    logErrors :: F.Fold ButtplugM Message ()
-    logErrors = F.drainBy \case
-      MsgError _ msg code -> liftIO $ T.hPutStrLn stderr $ displayBPErrorMsg msg code
+    logErrors :: Message -> IO ()
+    logErrors = \case
+      MsgError _ msg code -> T.hPutStrLn stderr $ displayBPErrorMsg msg code
       _ -> pure ()
 
     -- TODO might be useful to have this in buttplug-hs-core
