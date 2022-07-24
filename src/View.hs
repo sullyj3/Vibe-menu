@@ -33,7 +33,8 @@ theMap =
       (L.listSelectedAttr, V.white `on` V.blue)
     ]
 
-drawVibeMenu s = case s ^. screenState of
+drawVibeMenu :: AppState -> [Widget VibeMenuName]
+drawVibeMenu s = case s ^. appScreenState of
   ConnectScreen _ -> drawConnectScreen s
   ConnectingScreen -> drawConnectingScreen s
   MainScreen _ -> drawMainScreen s
@@ -41,16 +42,16 @@ drawVibeMenu s = case s ^. screenState of
 drawConnectScreen :: AppState -> [Widget VibeMenuName]
 drawConnectScreen s = [C.vCenter $ C.hCenter form]
   where
-    f = s ^. screenState . connectScreenState
+    f = s ^. appScreenState . connectScreenState
     form = B.border $ padTop (Pad 1) $ hLimit 40 $ renderForm f
 
 drawConnectingScreen :: AppState -> [Widget VibeMenuName]
-drawConnectingScreen s = [txt "Connecting..."]
+drawConnectingScreen _ = [txt "Connecting..."]
 
 drawMainScreen :: AppState -> [Widget VibeMenuName]
 drawMainScreen appState = [ui]
   where
-    s = appState ^. screenState . mainScreenState
+    s = appState ^. appScreenState . mainScreenState
     header = withAttr "header" . txtWrap
     title = padBottom (Pad 1) $ header "VibeMenu"
     deviceMenu =

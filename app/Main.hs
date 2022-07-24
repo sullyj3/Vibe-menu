@@ -5,79 +5,38 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedRecordUpdate #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE ViewPatterns #-}
 
 module Main (main) where
 
 import Brick
-import Brick.AttrMap qualified as A
 import Brick.BChan
   ( BChan,
     newBChan,
     readBChan,
     writeBChan,
   )
-import Brick.Focus
-  ( focusGetCurrent,
-    focusRingCursor,
-  )
-import Brick.Forms
-  ( Form,
-    allFieldsValid,
-    checkboxField,
-    editPasswordField,
-    editShowableField,
-    editTextField,
-    focusedFormInputAttr,
-    formFocus,
-    formState,
-    handleFormEvent,
-    invalidFields,
-    invalidFormInputAttr,
-    newForm,
-    radioField,
-    renderForm,
-    setFieldValid,
-    (@@=),
-  )
-import Brick.Widgets.Border qualified as B
-import Brick.Widgets.Center qualified as C
-import Brick.Widgets.Edit qualified as E
-import Brick.Widgets.List qualified as L
 import Buttplug.Core (Device (..), Message (..), Vibrate (..), clientMessageVersion)
 import Buttplug.Core.Handle qualified as Buttplug
 import Buttplug.Core.WebSockets qualified as BPWS
-import Control.Arrow ((>>>))
 import Control.Monad (forever)
 import Control.Monad.IO.Class
 import Control.Monad.STM (atomically)
-import Data.Char (digitToInt, isDigit, ord)
-import Data.Foldable (traverse_)
+import Data.Function ((&))
 import Data.Maybe (catMaybes)
-import Data.Semigroup (First (..))
 import Data.String (IsString)
-import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
-import Data.Vector (Vector)
-import Data.Vector qualified as Vec
 import Graphics.Vty qualified as V
+import HandleBrickEvent
 import Ki
-import Lens.Micro (Lens', lens, set, (%~), (&), (.~), (^.))
-import Lens.Micro.TH
 import Streamly.Data.Fold qualified as F
-import Streamly.Prelude (IsStream, nil, (|:))
+import Streamly.Prelude (IsStream)
 import Streamly.Prelude qualified as S
 import System.Environment
-import System.Exit (exitFailure)
 import System.IO
-import System.Process
 import Types
 import View
-import HandleBrickEvent
 
 vibeMenu ::
   (AppState -> EventM VibeMenuName AppState) ->
@@ -91,16 +50,14 @@ vibeMenu startEvent =
       appAttrMap = const theMap
     }
 
-hostPortToConnector (HostPort host port) = BPWS.Connector (T.unpack host) port
-
 -- TODO switch to optparse applicative maybe
 parseArgs :: IO (Maybe BPWS.Connector)
 parseArgs = do
   args <- getArgs
   pure $ case args of
-    [host, port] -> Just $ BPWS.Connector host (read port)
-    [port] -> Just $ BPWS.Connector defaultHost (read port)
-    [] -> Nothing
+    [h, p] -> Just $ BPWS.Connector h (read p)
+    [p] -> Just $ BPWS.Connector defaultHost (read p)
+    _ -> Nothing
 
 defaultHost :: IsString s => s
 defaultHost = "127.0.0.1"
@@ -108,8 +65,10 @@ defaultHost = "127.0.0.1"
 defaultPort :: Int
 defaultPort = 12345
 
+defaultHostPort :: HostPort
 defaultHostPort = HostPort defaultHost defaultPort
 
+buildVty :: IO V.Vty
 buildVty = do
   v <- V.mkVty =<< V.standardIOConfig
   V.setMode (V.outputIface v) V.Mouse True
@@ -121,21 +80,21 @@ main :: IO ()
 main = do
   mConnector <- parseArgs
 
-  cmdChan <- newBChan 30
+  cmdChan' <- newBChan 30
 
   vty <- buildVty
 
   let (initialState, startEvent) = case mConnector of
         Just connector ->
-          let connect s = do
-                liftIO $ writeBChan cmdChan (CmdConnect connector)
+          let sendCmdConnect s = do
+                liftIO $ writeBChan cmdChan' (CmdConnect connector)
                 pure s
-           in (AppState cmdChan ConnectingScreen, connect)
-        Nothing -> (AppState cmdChan (ConnectScreen $ mkConnectForm defaultHostPort), pure)
+           in (AppState cmdChan' ConnectingScreen, sendCmdConnect)
+        Nothing -> (AppState cmdChan' (ConnectScreen $ mkConnectForm defaultHostPort), pure)
 
   evChan :: BChan VibeMenuEvent <- newBChan 10
-  scoped \scope -> do
-    fork scope $ workerThread cmdChan evChan
+  _ <- scoped \scope -> do
+    _ <- fork scope $ workerThread cmdChan' evChan
     uiThread <-
       fork scope $
         customMain vty buildVty (Just evChan) (vibeMenu startEvent) initialState
@@ -149,9 +108,8 @@ workerThread cmdChan evChan = do
   scoped \scope -> do
     forever $
       readBChan cmdChan >>= \case
-        -- for now connection happens once automatically at the start of the program
         CmdConnect connector -> do
-          fork scope $ connect connector buttplugCmdChan evChan
+          _ <- fork scope $ connect connector buttplugCmdChan evChan
           pure ()
         BPCommand bpCmd -> writeBChan buttplugCmdChan bpCmd
 
@@ -174,10 +132,10 @@ sendReceiveBPMessages handle evChan buttplugCmdChan = do
   servInfo <- handShake
   emitBPEvent $ ReceivedMessage servInfo
   scoped \scope -> do
-    fork scope $ Buttplug.sendMessage handle $ MsgRequestDeviceList 2
-    fork scope $ Buttplug.sendMessage handle $ MsgStartScanning 3
-    fork scope emitEvents
-    fork scope handleCmds
+    _ <- fork scope $ Buttplug.sendMessage handle $ MsgRequestDeviceList 2
+    _ <- fork scope $ Buttplug.sendMessage handle $ MsgStartScanning 3
+    _ <- fork scope emitEvents
+    _ <- fork scope handleCmds
     atomically $ awaitAll scope
   where
     handShake = do
@@ -235,5 +193,5 @@ toEvents msg =
     msgToBPSessionEvent = \case
       MsgDeviceAdded _ name ix devmsgs -> Just $ EvDeviceAdded $ Device name ix devmsgs
       MsgDeviceRemoved _ ix -> Just $ EvDeviceRemoved ix
-      MsgDeviceList _ devices -> Just $ ReceivedDeviceList devices
+      MsgDeviceList _ deviceList -> Just $ ReceivedDeviceList deviceList
       _ -> Nothing

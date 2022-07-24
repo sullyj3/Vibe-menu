@@ -12,13 +12,13 @@
 
 module Types
   ( AppState (..),
-    cmdChan,
+    appCmdChan,
     ScreenState (..),
     VibeMenuName (..),
     VibeMenuEvent (..),
     host,
     port,
-    screenState,
+    appScreenState,
     MainScreenState (..),
     mainScreenState,
     listAppend,
@@ -107,7 +107,7 @@ data ScreenState
   | ConnectingScreen
   | MainScreen MainScreenState
 
-data AppState = AppState {_cmdChan :: BChan Command, _screenState :: ScreenState}
+data AppState = AppState {_appCmdChan :: BChan Command, _appScreenState :: ScreenState}
 
 makeLenses ''AppState
 
