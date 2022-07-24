@@ -60,6 +60,7 @@ import Data.Maybe (catMaybes)
 import Data.Semigroup (First (..))
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.IO qualified as T
 import Data.Vector (Vector)
 import Data.Vector qualified as Vec
 import Graphics.Vty qualified as V
@@ -68,10 +69,11 @@ import Lens.Micro (Lens', lens, set, (%~), (&), (.~), (^.))
 import Lens.Micro.TH
 import Streamly.Prelude (IsStream, nil, (|:))
 import Streamly.Prelude qualified as S
+import Streamly.Data.Fold qualified as F
 import System.Environment
 import System.Exit (exitFailure)
-import System.Process
 import System.IO
+import System.Process
 
 data HostPort = HostPort {_host :: Text, _port :: Int}
   deriving (Show, Eq)
@@ -176,8 +178,15 @@ connectScreenState = lens get set
           "BUG: connectScreenState: tried to write ConnectForm to incorrect constructor field"
 
 drawVibeMenu s = case s ^. screenState of
+  ConnectScreen _ -> drawConnectScreen s
   ConnectingScreen -> drawConnectingScreen s
-  MainScreen {} -> drawMainScreen s
+  MainScreen _ -> drawMainScreen s
+
+drawConnectScreen :: AppState -> [Widget VibeMenuName]
+drawConnectScreen s = [C.vCenter $ C.hCenter form]
+  where
+    f = s ^. screenState . connectScreenState
+    form = B.border $ padTop (Pad 1) $ hLimit 40 $ renderForm f
 
 drawConnectingScreen :: AppState -> [Widget VibeMenuName]
 drawConnectingScreen s = [txt "Connecting..."]
@@ -249,19 +258,23 @@ connectScreenHandleEvent s ev =
           liftIO $ hPutStrLn stderr "Invalid form, check the port is a number."
           continue s
     _ -> do
-      continue =<<
-        handleEventLensed s (screenState . connectScreenState) updateForm ev
+      continue
+        =<< handleEventLensed s (screenState . connectScreenState) updateForm ev
   where
     updateForm ev form = do
       form' :: ConnectForm <- handleFormEvent ev form
       let portValid = formState form' ^. port >= 0
       pure $ setFieldValid portValid PortField form'
 
-
-
-vibeMenuHandleEvent s@(AppState _ screen) ev = case screen of
-  ConnectingScreen -> connectingScreenHandleEvent s ev
-  MainScreen {} -> mainScreenHandleEvent s ev
+vibeMenuHandleEvent :: AppState
+                  -> BrickEvent VibeMenuName VibeMenuEvent
+                  -> EventM VibeMenuName (Next AppState)
+vibeMenuHandleEvent s@(AppState _ screen) = handle s
+  where
+    handle = case screen of
+      ConnectScreen _ -> connectScreenHandleEvent
+      ConnectingScreen -> connectingScreenHandleEvent
+      MainScreen _ -> mainScreenHandleEvent
 
 connectingScreenHandleEvent ::
   AppState ->
@@ -431,10 +444,20 @@ sendReceiveBPMessages handle evChan buttplugCmdChan = do
     emitEvents =
       S.mapM_ emitBPEvent $
         S.concatMap (S.fromFoldable . toEvents) $
-          buttplugMessages handle
+          S.tap logErrors $
+            buttplugMessages handle
     handleCmds =
       S.mapM_ (handleButtplugCommand handle) $
         (S.repeatM . readBChan) buttplugCmdChan
+
+    logErrors :: F.Fold IO Message ()
+    logErrors = F.drainBy \case
+      MsgError _ msg code -> T.hPutStrLn stderr $ displayBPErrorMsg msg code
+      _ -> pure ()
+
+    -- TODO might be useful to have this in buttplug-hs-core
+    displayBPErrorMsg msg code = "Buttplug error " <> T.pack (show code) <> ": " <> msg
+
 
 -- forward messages from the UI to the buttplug server
 handleButtplugCommand :: Buttplug.Handle -> ButtplugCommand -> IO ()
