@@ -14,12 +14,12 @@ module Types
   ( AppState (..),
     cmdChan,
     ScreenState (..),
-    VibeMenuName(..),
+    VibeMenuName (..),
     VibeMenuEvent (..),
     host,
     port,
     screenState,
-    MainScreenState(..),
+    MainScreenState (..),
     mainScreenState,
     listAppend,
     deleteDeviceByIndex,
@@ -30,9 +30,9 @@ module Types
     Command (..),
     BPSessionEvent (..),
     mkConnectForm,
-    HostPort(..),
+    HostPort (..),
     ConnectForm,
-    ButtplugCommand(..)
+    ButtplugCommand (..),
   )
 where
 

@@ -9,7 +9,7 @@
 module View (drawVibeMenu, theMap) where
 
 import Brick
-import Brick.Forms (invalidFormInputAttr, focusedFormInputAttr, renderForm)
+import Brick.Forms (focusedFormInputAttr, invalidFormInputAttr, renderForm)
 import Brick.Widgets.Border qualified as B
 import Brick.Widgets.Center qualified as C
 import Brick.Widgets.Edit qualified as E

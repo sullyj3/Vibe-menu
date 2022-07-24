@@ -58,6 +58,7 @@ import Data.Char (digitToInt, isDigit, ord)
 import Data.Foldable (traverse_)
 import Data.Maybe (catMaybes)
 import Data.Semigroup (First (..))
+import Data.String (IsString)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
@@ -74,8 +75,6 @@ import System.Environment
 import System.Exit (exitFailure)
 import System.IO
 import System.Process
-import Data.String (IsString)
-
 import Types
 import View
 
@@ -252,7 +251,6 @@ main = do
         customMain vty buildVty (Just evChan) (vibeMenu startEvent) initialState
     atomically $ await uiThread
   pure ()
-
 
 -- Main background thread
 workerThread :: BChan Command -> BChan VibeMenuEvent -> IO ()
