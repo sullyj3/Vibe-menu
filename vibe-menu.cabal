@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: eb88b563c69f69958ef2a88a0e99ac0db4416080e48286d00b13c587baab76eb
+-- hash: 5beea9a1c8794c39afc764aa4ff774cf56f3b507ac6a7c38c4162b16a6c548eb
 
 name:           vibe-menu
 version:        0.1.0.0
@@ -26,6 +26,9 @@ source-repository head
   location: https://github.com/githubuser/vibe-menu
 
 library
+  exposed-modules:
+      Types
+      View
   other-modules:
       Paths_vibe_menu
   hs-source-dirs:
