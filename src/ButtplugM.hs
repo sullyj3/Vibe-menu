@@ -1,7 +1,7 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ImportQualifiedPost #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module ButtplugM where
@@ -13,14 +13,14 @@ import Buttplug.Core.Handle (Handle)
 import Buttplug.Core.Handle qualified as Handle
 import Control.Concurrent.STM (TVar)
 import Control.Concurrent.STM.TVar (newTVarIO)
+import Control.Monad.Base
+import Control.Monad.Catch (MonadThrow)
 import Control.Monad.IO.Class
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader.Class
+import Control.Monad.Trans.Control
 import Control.Monad.Trans.Reader (ReaderT, runReaderT)
 import Data.IORef (IORef)
-import Control.Monad.Catch (MonadThrow)
-import Control.Monad.Trans.Control
-import Control.Monad.Base
 
 -- Eventually we'll automatically handle giving messages correct message ids.
 -- We'll present users with an api where they don't need to worry about id
@@ -40,9 +40,7 @@ newtype ButtplugM a = ButtplugM {runButtplugM :: ReaderT (Handle, TVar Int) IO a
 instance MonadBaseControl IO ButtplugM where
   type StM ButtplugM a = a
   liftBaseWith f = ButtplugM $ liftBaseWith $ \q -> f (q . runButtplugM)
-  restoreM = ButtplugM . restoreM 
-  
-
+  restoreM = ButtplugM . restoreM
 
 runButtplug :: Handle -> ButtplugM a -> IO a
 runButtplug handle bp = do

@@ -9,46 +9,47 @@
 
 module Main (main) where
 
-import Brick ( customMain, neverShowCursor, App(..), EventM )
+import Brick (App (..), EventM, customMain, neverShowCursor)
 import Brick.BChan
   ( BChan,
     newBChan,
     readBChan,
     writeBChan,
   )
-import Control.Monad.Trans.Class (lift)
 import Buttplug.Core (Device (..), Message (..), Vibrate (..), clientMessageVersion)
 import Buttplug.Core.Handle qualified as Buttplug
 import Buttplug.Core.WebSockets qualified as BPWS
+import ButtplugM (ButtplugM)
+import ButtplugM qualified
 import Control.Monad (forever)
-import Control.Monad.IO.Class ( MonadIO(liftIO) )
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.STM (atomically)
+import Control.Monad.Trans.Class (lift)
 import Data.Function ((&))
 import Data.Maybe (catMaybes)
 import Data.String (IsString)
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
 import Graphics.Vty qualified as V
-import HandleBrickEvent ( vibeMenuHandleEvent )
-import Ki.Unlifted ( awaitAll, fork, scoped, await )
+import HandleBrickEvent (vibeMenuHandleEvent)
+import Ki.Unlifted (await, awaitAll, fork, scoped)
 import Streamly.Data.Fold qualified as F
 import Streamly.Prelude (IsStream)
 import Streamly.Prelude qualified as S
-import System.Environment ( getArgs )
-import System.IO ( stderr )
+import System.Environment (getArgs)
+import System.IO (stderr)
 import Types
-    ( mkConnectForm,
-      AppState(AppState),
-      BPSessionEvent(..),
-      ButtplugCommand(..),
-      Command(..),
-      HostPort(HostPort),
-      ScreenState(ConnectScreen, ConnectingScreen),
-      VibeMenuEvent(..),
-      VibeMenuName )
-import View ( drawVibeMenu, theMap )
-import ButtplugM (ButtplugM)
-import ButtplugM qualified
+  ( AppState (AppState),
+    BPSessionEvent (..),
+    ButtplugCommand (..),
+    Command (..),
+    HostPort (HostPort),
+    ScreenState (ConnectScreen, ConnectingScreen),
+    VibeMenuEvent (..),
+    VibeMenuName,
+    mkConnectForm,
+  )
+import View (drawVibeMenu, theMap)
 
 vibeMenu ::
   (AppState -> EventM VibeMenuName AppState) ->
@@ -182,10 +183,9 @@ handleButtplugCommand = \case
 
 -- Produces all messages that come in through a buttplug connection
 buttplugMessages :: IsStream t => t ButtplugM Message
--- buttplugMessages con = forever $ lift (receiveMsgs con) >>= each
-buttplugMessages = do
-  S.repeatM ButtplugM.receiveMessages
-    & S.concatMap S.fromFoldable
+buttplugMessages =
+  S.concatMap S.fromFoldable $
+    S.repeatM ButtplugM.receiveMessages
 
 -- We notify the UI of every message so it can display them, but also
 -- translate messages into simplified events
