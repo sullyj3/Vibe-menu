@@ -139,8 +139,7 @@ sendReceiveBPMessages ::
 sendReceiveBPMessages evChan buttplugCmdChan = do
   servInfo <- handShake
   emitBPEvent $ ReceivedMessage servInfo
-  ButtplugM.sendMessage $ MsgRequestDeviceList 2
-  ButtplugM.sendMessage $ MsgStartScanning 3
+  ButtplugM.sendMessages [MsgRequestDeviceList 2, MsgStartScanning 3]
   scoped \scope -> do
     -- Send events to the Brick UI
     _ <- fork scope emitEvents
