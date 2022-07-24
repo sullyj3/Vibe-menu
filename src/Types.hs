@@ -104,7 +104,7 @@ mkConnectForm =
 
 data ScreenState
   = ConnectScreen ConnectForm
-  | ConnectingScreen
+  | ConnectingScreen (BPWS.Connector)
   | MainScreen MainScreenState
 
 data AppState = AppState {_appCmdChan :: BChan Command, _appScreenState :: ScreenState}

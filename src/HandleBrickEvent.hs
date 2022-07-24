@@ -73,7 +73,7 @@ connectScreenHandleEvent s = \case
       then do
         let connector = hostPortToConnector $ formState connectForm
         liftIO $ writeBChan (s ^. appCmdChan) $ CmdConnect connector
-        continue $ s & appScreenState .~ ConnectingScreen
+        continue $ s & appScreenState .~ ConnectingScreen connector
       else do
         -- TODO signal error to user in ui
         liftIO $ hPutStrLn stderr "Invalid form, check the port is a number."
@@ -95,7 +95,7 @@ vibeMenuHandleEvent s@(AppState _ screen) = handle s
   where
     handle = case screen of
       ConnectScreen _ -> connectScreenHandleEvent
-      ConnectingScreen -> connectingScreenHandleEvent
+      ConnectingScreen _ -> connectingScreenHandleEvent
       MainScreen _ -> mainScreenHandleEvent
 
 connectingScreenHandleEvent ::

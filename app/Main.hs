@@ -103,7 +103,7 @@ main = do
   mConnector <- parseArgs
   cmdChan' <- newBChan 30
   let initialState = case mConnector of
-        Just connector -> AppState cmdChan' ConnectingScreen
+        Just connector -> AppState cmdChan' (ConnectingScreen connector)
         Nothing -> AppState cmdChan' (ConnectScreen $ mkConnectForm defaultHostPort)
 
   evChan <- newBChan 10

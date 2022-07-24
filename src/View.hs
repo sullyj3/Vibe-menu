@@ -57,7 +57,7 @@ theMap =
 drawVibeMenu :: AppState -> [Widget VibeMenuName]
 drawVibeMenu s = case s ^. appScreenState of
   ConnectScreen _ -> drawConnectScreen s
-  ConnectingScreen -> drawConnectingScreen s
+  ConnectingScreen _ -> drawConnectingScreen s
   MainScreen _ -> drawMainScreen s
 
 drawConnectScreen :: AppState -> [Widget VibeMenuName]
