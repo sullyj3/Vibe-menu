@@ -1,33 +1,48 @@
-{-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ImportQualifiedPost #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module ButtplugM where
 
 -- start with a concrete monad, we'll figure out how to do a transformer later
 
-import Control.Monad.IO.Unlift
-import Control.Monad.Trans.Reader (ReaderT, runReaderT)
-import Control.Monad.Reader.Class
-import Control.Monad.IO.Class
+import Buttplug.Core (Message)
 import Buttplug.Core.Handle (Handle)
 import Buttplug.Core.Handle qualified as Handle
-import Data.IORef (IORef)
 import Control.Concurrent.STM (TVar)
 import Control.Concurrent.STM.TVar (newTVarIO)
-import Buttplug.Core (Message)
+import Control.Monad.IO.Class
+import Control.Monad.IO.Unlift
+import Control.Monad.Reader.Class
+import Control.Monad.Trans.Reader (ReaderT, runReaderT)
+import Data.IORef (IORef)
+import Control.Monad.Catch (MonadThrow)
+import Control.Monad.Trans.Control
+import Control.Monad.Base
 
 -- Eventually we'll automatically handle giving messages correct message ids.
 -- We'll present users with an api where they don't need to worry about id
-newtype ButtplugM a = ButtplugM { runButtplugM :: ReaderT (Handle, TVar Int) IO a }
-  deriving (Functor, Applicative, Monad, MonadIO, MonadReader (Handle, TVar Int))
+newtype ButtplugM a = ButtplugM {runButtplugM :: ReaderT (Handle, TVar Int) IO a}
+  deriving newtype
+    ( Functor,
+      Applicative,
+      Monad,
+      MonadFail,
+      MonadThrow,
+      MonadIO,
+      MonadReader (Handle, TVar Int),
+      MonadUnliftIO,
+      MonadBase IO
+    )
 
--- TODO I have no idea if this is correct, I just followed the types
-instance MonadUnliftIO ButtplugM where
-  withRunInIO :: ((forall a. ButtplugM a -> IO a) -> IO b) -> ButtplugM b
-  withRunInIO f = do
-    (handle, msgIndexCounter) <- ask
-    liftIO $ f $ \bp -> runReaderT (runButtplugM bp) (handle, msgIndexCounter)
-    
+instance MonadBaseControl IO ButtplugM where
+  type StM ButtplugM a = a
+  liftBaseWith f = ButtplugM $ liftBaseWith $ \q -> f (q . runButtplugM)
+  restoreM = ButtplugM . restoreM 
+  
+
 
 runButtplug :: Handle -> ButtplugM a -> IO a
 runButtplug handle bp = do

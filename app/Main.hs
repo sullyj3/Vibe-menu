@@ -16,6 +16,7 @@ import Brick.BChan
     readBChan,
     writeBChan,
   )
+import Control.Monad.Trans.Class (lift)
 import Buttplug.Core (Device (..), Message (..), Vibrate (..), clientMessageVersion)
 import Buttplug.Core.Handle qualified as Buttplug
 import Buttplug.Core.WebSockets qualified as BPWS
@@ -29,7 +30,7 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as T
 import Graphics.Vty qualified as V
 import HandleBrickEvent ( vibeMenuHandleEvent )
-import Ki ( awaitAll, fork, scoped, await )
+import Ki.Unlifted ( awaitAll, fork, scoped, await )
 import Streamly.Data.Fold qualified as F
 import Streamly.Prelude (IsStream)
 import Streamly.Prelude qualified as S
@@ -46,6 +47,8 @@ import Types
       VibeMenuEvent(..),
       VibeMenuName )
 import View ( drawVibeMenu, theMap )
+import ButtplugM (ButtplugM)
+import ButtplugM qualified
 
 vibeMenu ::
   (AppState -> EventM VibeMenuName AppState) ->
@@ -127,18 +130,17 @@ connect connector buttplugCmdChan evChan = do
   -- TODO handle exceptions
   BPWS.runClient connector \handle -> do
     writeBChan evChan EvConnected
-    sendReceiveBPMessages handle evChan buttplugCmdChan
+    ButtplugM.runButtplug handle $ sendReceiveBPMessages evChan buttplugCmdChan
 
 sendReceiveBPMessages ::
-  Buttplug.Handle ->
   BChan VibeMenuEvent ->
   BChan ButtplugCommand ->
-  IO ()
-sendReceiveBPMessages handle evChan buttplugCmdChan = do
+  ButtplugM ()
+sendReceiveBPMessages evChan buttplugCmdChan = do
   servInfo <- handShake
   emitBPEvent $ ReceivedMessage servInfo
-  Buttplug.sendMessage handle $ MsgRequestDeviceList 2
-  Buttplug.sendMessage handle $ MsgStartScanning 3
+  ButtplugM.sendMessage $ MsgRequestDeviceList 2
+  ButtplugM.sendMessage $ MsgStartScanning 3
   scoped \scope -> do
     -- Send events to the Brick UI
     _ <- fork scope emitEvents
@@ -146,43 +148,45 @@ sendReceiveBPMessages handle evChan buttplugCmdChan = do
     handleCmds
   where
     handShake = do
-      Buttplug.sendMessage handle $ MsgRequestServerInfo 1 "VibeMenu" clientMessageVersion
-      [servInfo@(MsgServerInfo 1 _ _ _)] <- Buttplug.receiveMessages handle
+      ButtplugM.sendMessage $ MsgRequestServerInfo 1 "VibeMenu" clientMessageVersion
+      [servInfo@(MsgServerInfo 1 _ _ _)] <- ButtplugM.receiveMessages
       pure servInfo
-    emitBPEvent = writeBChan evChan . BPEvent
+
+    emitBPEvent = liftIO . writeBChan evChan . BPEvent
+
+    emitEvents :: ButtplugM ()
     emitEvents =
       S.mapM_ emitBPEvent $
         S.concatMap (S.fromFoldable . toEvents) $
           S.tap logErrors $
-            buttplugMessages handle
-    handleCmds =
-      S.mapM_ (handleButtplugCommand handle) $
-        (S.repeatM . readBChan) buttplugCmdChan
+            buttplugMessages
 
-    logErrors :: F.Fold IO Message ()
+    handleCmds :: ButtplugM ()
+    handleCmds =
+      S.mapM_ handleButtplugCommand $
+        (S.repeatM . liftIO . readBChan) buttplugCmdChan
+
+    logErrors :: F.Fold ButtplugM Message ()
     logErrors = F.drainBy \case
-      MsgError _ msg code -> T.hPutStrLn stderr $ displayBPErrorMsg msg code
+      MsgError _ msg code -> liftIO $ T.hPutStrLn stderr $ displayBPErrorMsg msg code
       _ -> pure ()
 
     -- TODO might be useful to have this in buttplug-hs-core
     displayBPErrorMsg msg code = "Buttplug error " <> T.pack (show code) <> ": " <> msg
 
 -- forward messages from the UI to the buttplug server
-handleButtplugCommand :: Buttplug.Handle -> ButtplugCommand -> IO ()
-handleButtplugCommand con = \case
-  CmdStopAll -> Buttplug.sendMessage con $ MsgStopAllDevices 1
+handleButtplugCommand :: ButtplugCommand -> ButtplugM ()
+handleButtplugCommand = \case
+  CmdStopAll -> ButtplugM.sendMessage $ MsgStopAllDevices 1
   CmdVibrate devIx speed ->
-    Buttplug.sendMessage con $
+    ButtplugM.sendMessage $
       MsgVibrateCmd 1 devIx [Vibrate 0 speed]
 
 -- Produces all messages that come in through a buttplug connection
-buttplugMessages ::
-  IsStream t =>
-  Buttplug.Handle ->
-  t IO Message
+buttplugMessages :: IsStream t => t ButtplugM Message
 -- buttplugMessages con = forever $ lift (receiveMsgs con) >>= each
-buttplugMessages con =
-  S.repeatM (Buttplug.receiveMessages con)
+buttplugMessages = do
+  S.repeatM ButtplugM.receiveMessages
     & S.concatMap S.fromFoldable
 
 -- We notify the UI of every message so it can display them, but also

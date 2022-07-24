@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e3753c62259f3540002d2eeab6c171ac699763e531719a6661dc2c6388d2a2f5
+-- hash: 66a1a2f217c711ca59430ed84bcbd5cf64ec172b10f877ef2b137183ce6573f0
 
 name:           vibe-menu
 version:        0.1.0.0
@@ -39,15 +39,18 @@ library
       base >=4.7 && <5
     , brick
     , buttplug-hs-core
-    , ki
+    , exceptions
+    , ki-unlifted
     , microlens
     , microlens-th
+    , monad-control
     , mtl
     , process
     , stm
     , streamly
     , text
     , transformers
+    , transformers-base
     , unliftio-core
     , vector
     , vty
@@ -64,15 +67,18 @@ executable vibe-menu
       base >=4.7 && <5
     , brick
     , buttplug-hs-core
-    , ki
+    , exceptions
+    , ki-unlifted
     , microlens
     , microlens-th
+    , monad-control
     , mtl
     , process
     , stm
     , streamly
     , text
     , transformers
+    , transformers-base
     , unliftio-core
     , vector
     , vibe-menu
@@ -91,15 +97,18 @@ test-suite vibe-menu-test
       base >=4.7 && <5
     , brick
     , buttplug-hs-core
-    , ki
+    , exceptions
+    , ki-unlifted
     , microlens
     , microlens-th
+    , monad-control
     , mtl
     , process
     , stm
     , streamly
     , text
     , transformers
+    , transformers-base
     , unliftio-core
     , vector
     , vibe-menu

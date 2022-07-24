@@ -23,15 +23,19 @@ dependencies:
 - base >= 4.7 && < 5
 - brick
 - buttplug-hs-core
-- ki
+- exceptions
+- ki-unlifted
 - microlens
 - microlens-th
+- monad-control
+- unliftio-core
 - mtl
 - process
 - streamly
 - stm
 - text
 - transformers
+- transformers-base
 - unliftio-core
 - vector
 - vty
