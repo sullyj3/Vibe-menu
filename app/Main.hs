@@ -102,12 +102,9 @@ main = do
         Nothing -> (AppState cmdChan' (ConnectScreen $ mkConnectForm defaultHostPort), pure)
 
   evChan :: BChan VibeMenuEvent <- newBChan 10
-  _ <- scoped \scope -> do
+  scoped \scope -> do
     _ <- fork scope $ workerThread cmdChan' evChan
-    uiThread <-
-      fork scope $
-        customMain vty buildVty (Just evChan) (vibeMenu startEvent) initialState
-    atomically $ await uiThread
+    customMain vty buildVty (Just evChan) (vibeMenu startEvent) initialState
   pure ()
 
 -- Main background thread
@@ -140,12 +137,13 @@ sendReceiveBPMessages ::
 sendReceiveBPMessages handle evChan buttplugCmdChan = do
   servInfo <- handShake
   emitBPEvent $ ReceivedMessage servInfo
+  Buttplug.sendMessage handle $ MsgRequestDeviceList 2
+  Buttplug.sendMessage handle $ MsgStartScanning 3
   scoped \scope -> do
-    _ <- fork scope $ Buttplug.sendMessage handle $ MsgRequestDeviceList 2
-    _ <- fork scope $ Buttplug.sendMessage handle $ MsgStartScanning 3
+    -- Send events to the Brick UI
     _ <- fork scope emitEvents
-    _ <- fork scope handleCmds
-    atomically $ awaitAll scope
+    -- receive commands from the Brick UI
+    handleCmds
   where
     handShake = do
       Buttplug.sendMessage handle $ MsgRequestServerInfo 1 "VibeMenu" clientMessageVersion
