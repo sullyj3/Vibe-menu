@@ -71,6 +71,7 @@ import Streamly.Prelude qualified as S
 import System.Environment
 import System.Exit (exitFailure)
 import System.Process
+import System.IO
 
 data HostPort = HostPort {_host :: Text, _port :: Int}
   deriving (Show, Eq)
@@ -227,38 +228,36 @@ vibeMenu startEvent =
       appAttrMap = const theMap
     }
 
--- connectScreenHandleEvent ::
---   AppState ->
---   BrickEvent VibeMenuName VibeMenuEvent ->
---   EventM VibeMenuName (Next AppState)
--- connectScreenHandleEvent s ev =
---   case ev of
---     VtyEvent V.EvResize {} -> continue sameState
---     VtyEvent (V.EvKey V.KEsc []) -> halt sameState
---     VtyEvent (V.EvKey V.KEnter []) -> do
---       if allFieldsValid $ s ^.
---         then do
---           let HostPort host port = formState s
---               connector = BPWS.Connector (T.unpack host) port
---           liftIO $ writeBChan cmdChan $ CmdConnect connector
---           continue $ AppState cmdChan ConnectingScreenState
---         else do
---           -- TODO signal error to user in ui
---           liftIO $ hPutStrLn stderr "Invalid form, check the port is a number."
---           continue sameState
---     _ -> do
---       form' <- handleFormEvent ev s
+connectScreenHandleEvent ::
+  AppState ->
+  BrickEvent VibeMenuName VibeMenuEvent ->
+  EventM VibeMenuName (Next AppState)
+connectScreenHandleEvent s ev =
+  case ev of
+    VtyEvent V.EvResize {} -> continue s
+    VtyEvent (V.EvKey V.KEsc []) -> halt s
+    VtyEvent (V.EvKey V.KEnter []) -> do
+      let connectForm = s ^. screenState . connectScreenState
+      if allFieldsValid connectForm
+        then do
+          let HostPort host port = formState connectForm
+              connector = BPWS.Connector (T.unpack host) port
+          liftIO $ writeBChan (s ^. cmdChan) $ CmdConnect connector
+          continue $ s & screenState .~ ConnectingScreen
+        else do
+          -- TODO signal error to user in ui
+          liftIO $ hPutStrLn stderr "Invalid form, check the port is a number."
+          continue s
+    _ -> do
+      continue =<<
+        handleEventLensed s (screenState . connectScreenState) updateForm ev
+  where
+    updateForm ev form = do
+      form' :: ConnectForm <- handleFormEvent ev form
+      let portValid = formState form' ^. port >= 0
+      pure $ setFieldValid portValid PortField form'
 
---       -- Example of external validation:
---       continue $
---         connectState $
---           setFieldValid
---             (formState form' ^. port >= 0)
---             PortField
---             form'
---   where
---     sameState = AppState cmdChan (ConnectScreenState s)
---     connectState s' = AppState cmdChan (ConnectScreenState s')
+
 
 vibeMenuHandleEvent s@(AppState _ screen) ev = case screen of
   ConnectingScreen -> connectingScreenHandleEvent s ev
