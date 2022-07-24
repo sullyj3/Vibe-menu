@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 5beea9a1c8794c39afc764aa4ff774cf56f3b507ac6a7c38c4162b16a6c548eb
+-- hash: e577b32e0de5f6c307afff86292da94c2c1e82e980354ebf5530238caa19a980
 
 name:           vibe-menu
 version:        0.1.0.0
@@ -27,6 +27,7 @@ source-repository head
 
 library
   exposed-modules:
+      HandleBrickEvent
       Types
       View
   other-modules:
