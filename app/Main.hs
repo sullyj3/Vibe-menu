@@ -2,14 +2,15 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedRecordUpdate #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Main where
+module Main (main) where
 
 import Brick
 import Brick.AttrMap qualified as A
@@ -49,33 +50,33 @@ import Brick.Widgets.List qualified as L
 import Buttplug.Core (Device (..), Message (..), Vibrate (..), clientMessageVersion)
 import Buttplug.Core.Handle qualified as Buttplug
 import Buttplug.Core.WebSockets qualified as BPWS
-import Control.Concurrent.Async
+import Control.Arrow ((>>>))
 import Control.Monad (forever)
 import Control.Monad.IO.Class
-import Data.Char (isDigit, ord)
+import Control.Monad.STM (atomically)
+import Data.Char (digitToInt, isDigit, ord)
 import Data.Foldable (traverse_)
 import Data.Maybe (catMaybes)
 import Data.Semigroup (First (..))
+import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.IO qualified as T
 import Data.Vector (Vector)
 import Data.Vector qualified as Vec
-import Flow
 import Graphics.Vty qualified as V
-import Lens.Micro ((%~), (&), (.~), (^.))
+import Ki
+import Lens.Micro (Lens', lens, set, (%~), (&), (.~), (^.))
 import Lens.Micro.TH
-import Streamly hiding ((<=>))
-import Streamly.Prelude (nil, (|:))
+import Streamly.Data.Fold qualified as F
+import Streamly.Prelude (IsStream, nil, (|:))
 import Streamly.Prelude qualified as S
 import System.Environment
 import System.Exit (exitFailure)
+import System.IO
 import System.Process
+import Data.String (IsString)
 
-data ConnectScreenName
-  = HostField
-  | PortField
-  deriving (Eq, Ord, Show)
-
-data HostPort = HostPort {_host :: String, _port :: Int}
+data HostPort = HostPort {_host :: Text, _port :: Int}
   deriving (Show, Eq)
 
 makeLenses ''HostPort
@@ -96,30 +97,105 @@ theMap =
 data VibeMenuName
   = MessageLog
   | DeviceMenu
+  | HostField
+  | PortField
   deriving (Eq, Ord, Show)
 
 -- Commands from the UI thread to the background thread
-data Command
+data ButtplugCommand
   = CmdStopAll
   | CmdVibrate Word Double
+  deriving (Show)
 
-data VibeMenuState = VibeMenuState
-  { _messageLog :: L.List VibeMenuName Message,
-    _devices :: L.List VibeMenuName Device,
-    _cmdChan :: BChan Command
-  }
-
-makeLenses ''VibeMenuState
+-- TODO give BPWS.Connector a `Show` instance so we can derive `Show` here
+data Command
+  = BPCommand ButtplugCommand
+  | CmdConnect BPWS.Connector
 
 -- events from bg thread to UI thread
+data VibeMenuEvent = EvConnected | BPEvent BPSessionEvent
+
+-- events from buttplug server
 data BPSessionEvent
   = ReceivedMessage Message
   | ReceivedDeviceList [Device]
   | EvDeviceAdded Device
   | EvDeviceRemoved Word
 
-drawVibeMenu s = [ui]
+data MainScreenState = MainScreenState
+  { _messageLog :: L.List VibeMenuName Message,
+    _devices :: L.List VibeMenuName Device
+  }
+
+type ConnectForm = Form HostPort VibeMenuEvent VibeMenuName
+
+mkConnectForm :: HostPort -> ConnectForm
+mkConnectForm =
+  let label s w =
+        padBottom (Pad 1) $
+          vLimit 1 (hLimit 15 $ str s <+> fill ' ') <+> w
+   in newForm
+        [ label "Host"
+            @@= editTextField host HostField (Just 1),
+          label "Port"
+            @@= editShowableField port PortField
+        ]
+
+makeLenses ''MainScreenState
+
+data ScreenState
+  = ConnectScreen ConnectForm
+  | ConnectingScreen
+  | MainScreen MainScreenState
+
+data AppState = AppState {_cmdChan :: BChan Command, _screenState :: ScreenState}
+
+makeLenses ''AppState
+
+mainScreenState :: Lens' ScreenState MainScreenState
+mainScreenState = lens get set
   where
+    get = \case
+      MainScreen mss -> mss
+      _ -> error "BUG: mainScreenState: tried to get MainScreenState from incorrect constructor"
+
+    set appState mss = case appState of
+      MainScreen _ -> MainScreen mss
+      _ ->
+        error
+          "BUG: mainScreenState: tried to write MainScreenState to incorrect constructor field"
+
+connectScreenState :: Lens' ScreenState ConnectForm
+connectScreenState = lens get set
+  where
+    get = \case
+      ConnectScreen connectForm -> connectForm
+      _ -> error "BUG: connectScreenState: tried to get ConnectForm from incorrect constructor"
+
+    set appState connectForm = case appState of
+      ConnectScreen _ -> ConnectScreen connectForm
+      _ ->
+        error
+          "BUG: connectScreenState: tried to write ConnectForm to incorrect constructor field"
+
+drawVibeMenu s = case s ^. screenState of
+  ConnectScreen _ -> drawConnectScreen s
+  ConnectingScreen -> drawConnectingScreen s
+  MainScreen _ -> drawMainScreen s
+
+drawConnectScreen :: AppState -> [Widget VibeMenuName]
+drawConnectScreen s = [C.vCenter $ C.hCenter form]
+  where
+    f = s ^. screenState . connectScreenState
+    form = B.border $ padTop (Pad 1) $ hLimit 40 $ renderForm f
+
+drawConnectingScreen :: AppState -> [Widget VibeMenuName]
+drawConnectingScreen s = [txt "Connecting..."]
+
+drawMainScreen :: AppState -> [Widget VibeMenuName]
+drawMainScreen appState = [ui]
+  where
+    s = appState ^. screenState . mainScreenState
     header = withAttr "header" . txtWrap
     title = padBottom (Pad 1) $ header "VibeMenu"
     deviceMenu =
@@ -150,76 +226,128 @@ listDrawElement sel a =
           else str s
    in (selStr $ show a)
 
-vibeMenu :: App VibeMenuState BPSessionEvent VibeMenuName
-vibeMenu =
+vibeMenu ::
+  (AppState -> EventM VibeMenuName AppState) ->
+  App AppState VibeMenuEvent VibeMenuName
+vibeMenu startEvent =
   App
     { appDraw = drawVibeMenu,
       appHandleEvent = vibeMenuHandleEvent,
       appChooseCursor = neverShowCursor, -- TODO
-      appStartEvent = return,
+      appStartEvent = startEvent,
       appAttrMap = const theMap
     }
 
-sendCommand :: BChan Command -> Command -> EventM n ()
-sendCommand chan = liftIO . writeBChan chan
+connectScreenHandleEvent ::
+  AppState ->
+  BrickEvent VibeMenuName VibeMenuEvent ->
+  EventM VibeMenuName (Next AppState)
+connectScreenHandleEvent s ev =
+  case ev of
+    VtyEvent V.EvResize {} -> continue s
+    VtyEvent (V.EvKey V.KEsc []) -> halt s
+    VtyEvent (V.EvKey V.KEnter []) -> do
+      let connectForm = s ^. screenState . connectScreenState
+      if allFieldsValid connectForm
+        then do
+          let HostPort host port = formState connectForm
+              connector = BPWS.Connector (T.unpack host) port
+          liftIO $ writeBChan (s ^. cmdChan) $ CmdConnect connector
+          continue $ s & screenState .~ ConnectingScreen
+        else do
+          -- TODO signal error to user in ui
+          liftIO $ hPutStrLn stderr "Invalid form, check the port is a number."
+          continue s
+    _ -> do
+      continue
+        =<< handleEventLensed s (screenState . connectScreenState) updateForm ev
+  where
+    updateForm ev form = do
+      form' :: ConnectForm <- handleFormEvent ev form
+      let portValid = formState form' ^. port >= 0
+      pure $ setFieldValid portValid PortField form'
 
 vibeMenuHandleEvent ::
-  VibeMenuState ->
-  BrickEvent VibeMenuName BPSessionEvent ->
-  EventM VibeMenuName (Next VibeMenuState)
-vibeMenuHandleEvent s = \case
+  AppState ->
+  BrickEvent VibeMenuName VibeMenuEvent ->
+  EventM VibeMenuName (Next AppState)
+vibeMenuHandleEvent s@(AppState _ screen) = handle s
+  where
+    handle = case screen of
+      ConnectScreen _ -> connectScreenHandleEvent
+      ConnectingScreen -> connectingScreenHandleEvent
+      MainScreen _ -> mainScreenHandleEvent
+
+connectingScreenHandleEvent ::
+  AppState ->
+  BrickEvent VibeMenuName VibeMenuEvent ->
+  EventM VibeMenuName (Next AppState)
+connectingScreenHandleEvent s = \case
+  AppEvent EvConnected -> continue $ s & screenState .~ MainScreen initialMainScreenState
+  _ -> continue s
+  where
+    initialMainScreenState =
+      MainScreenState
+        (L.list MessageLog mempty 1)
+        (L.list DeviceMenu mempty 1)
+
+mainScreenHandleEvent ::
+  AppState ->
+  BrickEvent VibeMenuName VibeMenuEvent ->
+  EventM VibeMenuName (Next AppState)
+mainScreenHandleEvent s = \case
   VtyEvent e -> case e of
     V.EvResize {} -> continue s
     V.EvKey V.KEsc [] -> halt s
     V.EvKey (V.KChar c) [] -> case c of
       's' -> do
-        sendCommand (s ^. cmdChan) CmdStopAll
+        sendCommand $ BPCommand CmdStopAll
         continue s
       'q' -> halt s
       _
         | isDigit c -> do
-            withSelectedDevice \(_, Device _ devIndex _) -> do
-              let strength =
-                    if c == '0'
-                      then 1
-                      else fromIntegral (ord c - 48) / 10
-              sendCommand (s ^. cmdChan) (CmdVibrate devIndex strength)
+            withSelectedDevice $ vibratePercent (outOfTen . digitToInt $ c)
             continue s
         | otherwise -> continue s
-    -- V.EvKey (V.KChar c) []
-    --   | '0' <= c && c <= '9' -> do
-    --     withSelectedDevice \(_, Device _ devIndex _) -> do
-    --        let strength = if c == '0' then 1
-    --                                   else fromIntegral (ord c - 48) / 10
-    --        sendCommand (s ^. cmdChan) (CmdVibrate devIndex strength)
-    --     continue s
-    --   | c == 's' -> do
-    --     sendCommand (s ^. cmdChan) CmdStopAll
-    --     continue s
-    --   | otherwise -> continue s
-    e -> handleEventLensed s devices L.handleListEvent e >>= continue
-  AppEvent e -> case e of
+    e -> do
+      handleEventLensed s (screenState . mainScreenState . devices) L.handleListEvent e >>= continue
+  AppEvent (BPEvent e) -> case e of
     ReceivedMessage msg ->
       continue $
         s
-          & messageLog
-            %~ (listAppend msg .> L.listMoveToEnd)
+          & screenState . mainScreenState . messageLog
+            %~ (listAppend msg >>> L.listMoveToEnd)
     ReceivedDeviceList devs ->
-      continue $ s & devices .~ L.list DeviceMenu (Vec.fromList devs) 1
+      continue $ s & screenState . mainScreenState . devices .~ L.list DeviceMenu (Vec.fromList devs) 1
     EvDeviceAdded dev@(Device devName (fromIntegral -> ix) _) ->
-      continue $ s & devices %~ listAppend dev
+      continue $ s & screenState . mainScreenState . devices %~ listAppend dev
     EvDeviceRemoved (fromIntegral -> ix) ->
-      continue $ s & devices %~ deleteDeviceByIndex ix
+      continue $ s & screenState . mainScreenState . devices %~ deleteDeviceByIndex ix
+  AppEvent EvConnected -> continue s -- todo
   _ -> continue s
   where
-    selectedDevice = s ^. devices & L.listSelectedElement
+    sendCommand :: Command -> EventM n ()
+    sendCommand = liftIO . writeBChan (s ^. cmdChan)
+
+    selectedDevice = s ^. screenState . mainScreenState . devices & L.listSelectedElement
 
     withSelectedDevice ::
-      ((Int, Device) -> EventM VibeMenuName ()) ->
+      (Int -> Device -> EventM VibeMenuName ()) ->
       EventM VibeMenuName ()
     withSelectedDevice k = case selectedDevice of
-      Just d -> k d
+      Just (index, device) -> k index device
       Nothing -> pure ()
+
+    vibratePercent :: Double -> Int -> Device -> EventM n ()
+    vibratePercent speed _ (Device _ devIndex _) = do
+      sendCommand $ BPCommand $ CmdVibrate devIndex speed
+
+    -- convert a character digit between 1 and 9, to a float between 0.1 and 0.9
+    -- we also allow 0 to represent 10, mapping to 1. The idea is to use the
+    -- numeric row on a keyboard to indicate intensity
+    outOfTen = \case
+      0 -> 1
+      n -> fromIntegral n / 10
 
 listAppend :: e -> L.List n e -> L.List n e
 listAppend elt l =
@@ -232,84 +360,125 @@ deleteDeviceByIndex devIx l =
     Just listIndex -> L.listRemove listIndex l
     Nothing -> l
 
+hostPortToConnector (HostPort host port) = BPWS.Connector (T.unpack host) port
+
 -- TODO switch to optparse applicative maybe
-getHostPort :: IO HostPort
-getHostPort = do
+parseArgs :: IO (Maybe BPWS.Connector)
+parseArgs = do
   args <- getArgs
   pure $ case args of
-    [host, port] -> HostPort host (read port)
-    [port] -> HostPort defaultHost (read port)
-    [] -> HostPort defaultHost defaultPort
-  where
-    defaultHost = "127.0.0.1"
-    defaultPort = 12345
+    [host, port] -> Just $ BPWS.Connector host (read port)
+    [port] -> Just $ BPWS.Connector defaultHost (read port)
+    [] -> Nothing
+
+defaultHost :: IsString s => s
+defaultHost = "127.0.0.1"
+
+defaultPort :: Int
+defaultPort = 12345
+
+defaultHostPort = HostPort defaultHost defaultPort
 
 buildVty = do
   v <- V.mkVty =<< V.standardIOConfig
   V.setMode (V.outputIface v) V.Mouse True
   return v
 
+-- todo: proper logging with simple-logger
+-- https://hackage.haskell.org/package/simple-logger-0.1.1/docs/Control-Logger-Simple.html
 main :: IO ()
 main = do
-  HostPort host port <- getHostPort
-  buttplugCmdChan <- newBChan 30
+  mConnector <- parseArgs
+
+  cmdChan <- newBChan 30
 
   vty <- buildVty
 
-  let connector = BPWS.Connector host port
-      initialState =
-        VibeMenuState
-          (L.list MessageLog mempty 1)
-          (L.list DeviceMenu mempty 1)
-          buttplugCmdChan
+  let (initialState, startEvent) = case mConnector of
+        Just connector ->
+          let connect s = do
+                liftIO $ writeBChan cmdChan (CmdConnect connector)
+                pure s
+           in (AppState cmdChan ConnectingScreen, connect)
+        Nothing -> (AppState cmdChan (ConnectScreen $ mkConnectForm defaultHostPort), pure)
 
-  evChan <- newBChan 10
-  race_
-    (connect connector buttplugCmdChan evChan)
-    (customMain vty buildVty (Just evChan) vibeMenu initialState)
+  evChan :: BChan VibeMenuEvent <- newBChan 10
+  scoped \scope -> do
+    fork scope $ workerThread cmdChan evChan
+    uiThread <-
+      fork scope $
+        customMain vty buildVty (Just evChan) (vibeMenu startEvent) initialState
+    atomically $ await uiThread
   pure ()
 
+
+-- Main background thread
+workerThread :: BChan Command -> BChan VibeMenuEvent -> IO ()
+workerThread cmdChan evChan = do
+  buttplugCmdChan <- newBChan 30
+  scoped \scope -> do
+    forever $
+      readBChan cmdChan >>= \case
+        -- for now connection happens once automatically at the start of the program
+        CmdConnect connector -> do
+          fork scope $ connect connector buttplugCmdChan evChan
+          pure ()
+        BPCommand bpCmd -> writeBChan buttplugCmdChan bpCmd
+
+-- Background thread which handles communication with the server
+connect :: BPWS.Connector -> BChan ButtplugCommand -> BChan VibeMenuEvent -> IO ()
 connect connector buttplugCmdChan evChan = do
   putStrLn $
     "Connecting to: " <> connector.wsConnectorHost <> ":" <> show connector.wsConnectorPort
   -- TODO handle exceptions
   BPWS.runClient connector \handle -> do
-    putStrLn "connected!"
-    handleMsgs handle evChan buttplugCmdChan
+    writeBChan evChan EvConnected
+    sendReceiveBPMessages handle evChan buttplugCmdChan
 
--- Background threads which handle communication with the server
-handleMsgs ::
+sendReceiveBPMessages ::
   Buttplug.Handle ->
-  BChan BPSessionEvent ->
-  BChan Command ->
+  BChan VibeMenuEvent ->
+  BChan ButtplugCommand ->
   IO ()
-handleMsgs handle evChan buttplugCmdChan = do
-  -- block while we perform handshake
-  Buttplug.sendMessage handle $ MsgRequestServerInfo 1 "VibeMenu" clientMessageVersion
-  [servInfo@(MsgServerInfo 1 _ _ _)] <- Buttplug.receiveMessages handle
-  writeBChan evChan $ ReceivedMessage servInfo
+sendReceiveBPMessages handle evChan buttplugCmdChan = do
+  servInfo <- handShake
+  emitBPEvent $ ReceivedMessage servInfo
+  scoped \scope -> do
+    fork scope $ Buttplug.sendMessage handle $ MsgRequestDeviceList 2
+    fork scope $ Buttplug.sendMessage handle $ MsgStartScanning 3
+    fork scope emitEvents
+    fork scope handleCmds
+    atomically $ awaitAll scope
+  where
+    handShake = do
+      Buttplug.sendMessage handle $ MsgRequestServerInfo 1 "VibeMenu" clientMessageVersion
+      [servInfo@(MsgServerInfo 1 _ _ _)] <- Buttplug.receiveMessages handle
+      pure servInfo
+    emitBPEvent = writeBChan evChan . BPEvent
+    emitEvents =
+      S.mapM_ emitBPEvent $
+        S.concatMap (S.fromFoldable . toEvents) $
+          S.tap logErrors $
+            buttplugMessages handle
+    handleCmds =
+      S.mapM_ (handleButtplugCommand handle) $
+        (S.repeatM . readBChan) buttplugCmdChan
 
-  mapConcurrently_
-    id
-    [ Buttplug.sendMessage handle $ MsgRequestDeviceList 2,
-      Buttplug.sendMessage handle $ MsgStartScanning 3,
-      -- main loop
-      buttplugMessages handle
-        |> S.concatMap (toEvents .> S.fromFoldable)
-        |> S.mapM_ (writeBChan evChan),
-      uiCmds buttplugCmdChan
-        |> S.mapM_ (handleCmd handle)
-    ]
+    logErrors :: F.Fold IO Message ()
+    logErrors = F.drainBy \case
+      MsgError _ msg code -> T.hPutStrLn stderr $ displayBPErrorMsg msg code
+      _ -> pure ()
 
-handleCmd :: Buttplug.Handle -> Command -> IO ()
-handleCmd con = \case
+    -- TODO might be useful to have this in buttplug-hs-core
+    displayBPErrorMsg msg code = "Buttplug error " <> T.pack (show code) <> ": " <> msg
+
+-- forward messages from the UI to the buttplug server
+handleButtplugCommand :: Buttplug.Handle -> ButtplugCommand -> IO ()
+handleButtplugCommand con = \case
   CmdStopAll -> Buttplug.sendMessage con $ MsgStopAllDevices 1
   CmdVibrate devIx speed ->
     Buttplug.sendMessage con $
       MsgVibrateCmd 1 devIx [Vibrate 0 speed]
-
-uiCmds :: (IsStream t) => BChan Command -> t IO Command
-uiCmds chan = S.repeatM (readBChan chan)
 
 -- Produces all messages that come in through a buttplug connection
 buttplugMessages ::
