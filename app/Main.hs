@@ -9,7 +9,7 @@
 
 module Main (main) where
 
-import Brick
+import Brick ( customMain, neverShowCursor, App(..), EventM )
 import Brick.BChan
   ( BChan,
     newBChan,
@@ -20,7 +20,7 @@ import Buttplug.Core (Device (..), Message (..), Vibrate (..), clientMessageVers
 import Buttplug.Core.Handle qualified as Buttplug
 import Buttplug.Core.WebSockets qualified as BPWS
 import Control.Monad (forever)
-import Control.Monad.IO.Class
+import Control.Monad.IO.Class ( MonadIO(liftIO) )
 import Control.Monad.STM (atomically)
 import Data.Function ((&))
 import Data.Maybe (catMaybes)
@@ -28,15 +28,24 @@ import Data.String (IsString)
 import Data.Text qualified as T
 import Data.Text.IO qualified as T
 import Graphics.Vty qualified as V
-import HandleBrickEvent
-import Ki
+import HandleBrickEvent ( vibeMenuHandleEvent )
+import Ki ( awaitAll, fork, scoped, await )
 import Streamly.Data.Fold qualified as F
 import Streamly.Prelude (IsStream)
 import Streamly.Prelude qualified as S
-import System.Environment
-import System.IO
+import System.Environment ( getArgs )
+import System.IO ( stderr )
 import Types
-import View
+    ( mkConnectForm,
+      AppState(AppState),
+      BPSessionEvent(..),
+      ButtplugCommand(..),
+      Command(..),
+      HostPort(HostPort),
+      ScreenState(ConnectScreen, ConnectingScreen),
+      VibeMenuEvent(..),
+      VibeMenuName )
+import View ( drawVibeMenu, theMap )
 
 vibeMenu ::
   (AppState -> EventM VibeMenuName AppState) ->

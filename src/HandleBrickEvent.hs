@@ -2,17 +2,21 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedRecordUpdate #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module HandleBrickEvent (vibeMenuHandleEvent) where
 
 import Brick
+  ( BrickEvent (AppEvent, VtyEvent),
+    EventM,
+    Next,
+    continue,
+    halt,
+    handleEventLensed,
+  )
 import Brick.BChan (writeBChan)
 import Brick.Forms
   ( allFieldsValid,
@@ -23,13 +27,38 @@ import Brick.Forms
 import Brick.Widgets.List qualified as L
 import Buttplug.Core (Device (..))
 import Control.Arrow ((>>>))
-import Control.Monad.IO.Class
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Char (digitToInt, isDigit)
 import Data.Vector qualified as Vec
 import Graphics.Vty qualified as V
 import Lens.Micro ((%~), (&), (.~), (^.))
-import System.IO
+import System.IO (hPutStrLn, stderr)
 import Types
+  ( AppState (AppState),
+    BPSessionEvent
+      ( EvDeviceAdded,
+        EvDeviceRemoved,
+        ReceivedDeviceList,
+        ReceivedMessage
+      ),
+    ButtplugCommand (CmdStopAll, CmdVibrate),
+    Command (..),
+    ConnectForm,
+    MainScreenState (MainScreenState),
+    ScreenState (ConnectScreen, ConnectingScreen, MainScreen),
+    VibeMenuEvent (..),
+    VibeMenuName (DeviceMenu, MessageLog, PortField),
+    appCmdChan,
+    appScreenState,
+    connectScreenState,
+    deleteDeviceByIndex,
+    devices,
+    hostPortToConnector,
+    listAppend,
+    mainScreenState,
+    messageLog,
+    port,
+  )
 
 connectScreenHandleEvent ::
   AppState ->
@@ -100,12 +129,13 @@ mainScreenHandleEvent s = \case
             withSelectedDevice $ vibratePercent (outOfTen . digitToInt $ c)
             continue s
         | otherwise -> continue s
-    vtyEvent -> continue =<<
-      handleEventLensed
-        s
-        (appScreenState . mainScreenState . devices)
-        L.handleListEvent
-        vtyEvent
+    vtyEvent ->
+      continue
+        =<< handleEventLensed
+          s
+          (appScreenState . mainScreenState . devices)
+          L.handleListEvent
+          vtyEvent
   AppEvent (BPEvent e) -> case e of
     ReceivedMessage msg ->
       continue $

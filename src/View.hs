@@ -9,6 +9,19 @@
 module View (drawVibeMenu, theMap) where
 
 import Brick
+    ( attrMap,
+      on,
+      (<=>),
+      hLimit,
+      padBottom,
+      padTop,
+      str,
+      txt,
+      txtWrap,
+      withAttr,
+      AttrMap,
+      Padding(Pad),
+      Widget )
 import Brick.Forms (focusedFormInputAttr, invalidFormInputAttr, renderForm)
 import Brick.Widgets.Border qualified as B
 import Brick.Widgets.Center qualified as C
@@ -19,6 +32,14 @@ import Data.Text qualified as T
 import Graphics.Vty qualified as V
 import Lens.Micro ((^.))
 import Types
+    ( VibeMenuName,
+      AppState,
+      ScreenState(MainScreen, ConnectScreen, ConnectingScreen),
+      devices,
+      messageLog,
+      mainScreenState,
+      connectScreenState,
+      appScreenState )
 
 theMap :: AttrMap
 theMap =
