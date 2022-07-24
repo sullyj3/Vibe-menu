@@ -40,6 +40,7 @@ import System.Environment (getArgs)
 import System.IO (stderr)
 import Types
   ( AppState (AppState),
+    appCmdChan,
     BPSessionEvent (..),
     ButtplugCommand (..),
     Command (..),
@@ -50,11 +51,12 @@ import Types
     mkConnectForm,
   )
 import View (drawVibeMenu, theMap)
+import Lens.Micro ((^.))
 
 vibeMenu ::
-  (AppState -> EventM VibeMenuName AppState) ->
+  Maybe BPWS.Connector ->
   App AppState VibeMenuEvent VibeMenuName
-vibeMenu startEvent =
+vibeMenu mConnector =
   App
     { appDraw = drawVibeMenu,
       appHandleEvent = vibeMenuHandleEvent,
@@ -62,6 +64,13 @@ vibeMenu startEvent =
       appStartEvent = startEvent,
       appAttrMap = const theMap
     }
+  where
+    startEvent :: AppState -> EventM VibeMenuName AppState
+    startEvent = case mConnector of
+      Just connector -> \s -> do
+        liftIO $ writeBChan (s ^. appCmdChan) (CmdConnect connector)
+        pure s
+      Nothing -> pure
 
 -- TODO switch to optparse applicative maybe
 parseArgs :: IO (Maybe BPWS.Connector)
@@ -92,23 +101,16 @@ buildVty = do
 main :: IO ()
 main = do
   mConnector <- parseArgs
-
   cmdChan' <- newBChan 30
+  let initialState = case mConnector of
+        Just connector -> AppState cmdChan' ConnectingScreen
+        Nothing -> AppState cmdChan' (ConnectScreen $ mkConnectForm defaultHostPort)
 
-  vty <- buildVty
-
-  let (initialState, startEvent) = case mConnector of
-        Just connector ->
-          let sendCmdConnect s = do
-                liftIO $ writeBChan cmdChan' (CmdConnect connector)
-                pure s
-           in (AppState cmdChan' ConnectingScreen, sendCmdConnect)
-        Nothing -> (AppState cmdChan' (ConnectScreen $ mkConnectForm defaultHostPort), pure)
-
-  evChan :: BChan VibeMenuEvent <- newBChan 10
+  evChan <- newBChan 10
   scoped \scope -> do
     _ <- fork scope $ workerThread cmdChan' evChan
-    customMain vty buildVty (Just evChan) (vibeMenu startEvent) initialState
+    vty <- buildVty
+    customMain vty buildVty (Just evChan) (vibeMenu mConnector) initialState
   pure ()
 
 -- Main background thread
