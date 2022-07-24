@@ -26,10 +26,12 @@ dependencies:
 - ki
 - microlens
 - microlens-th
+- mtl
 - process
 - streamly
 - stm
 - text
+- transformers
 - vector
 - vty
 
