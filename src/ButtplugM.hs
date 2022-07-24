@@ -20,7 +20,6 @@ import Control.Monad.IO.Unlift
 import Control.Monad.Reader.Class
 import Control.Monad.Trans.Control
 import Control.Monad.Trans.Reader (ReaderT, runReaderT)
-import Data.IORef (IORef)
 
 -- TODO
 -- Eventually we'll automatically handle giving messages correct message ids.

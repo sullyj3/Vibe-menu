@@ -28,6 +28,7 @@ import Brick.Widgets.Center qualified as C
 import Brick.Widgets.Edit qualified as E
 import Brick.Widgets.List qualified as L
 import Buttplug.Core (Device (..))
+import Buttplug.Core.WebSockets qualified as BPWS
 import Data.Text qualified as T
 import Graphics.Vty qualified as V
 import Lens.Micro ((^.))
@@ -39,7 +40,7 @@ import Types
       messageLog,
       mainScreenState,
       connectScreenState,
-      appScreenState )
+      appScreenState, connectingScreenState )
 
 theMap :: AttrMap
 theMap =
@@ -67,7 +68,8 @@ drawConnectScreen s = [C.vCenter $ C.hCenter form]
     form = B.border $ padTop (Pad 1) $ hLimit 40 $ renderForm f
 
 drawConnectingScreen :: AppState -> [Widget VibeMenuName]
-drawConnectingScreen _ = [txt "Connecting..."]
+drawConnectingScreen s = [txt $ "Connecting to: " <> T.pack host <> ":" <> T.pack (show port)]
+  where (BPWS.Connector host port) = s ^. appScreenState . connectingScreenState
 
 drawMainScreen :: AppState -> [Widget VibeMenuName]
 drawMainScreen appState = [ui]

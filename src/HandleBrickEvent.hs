@@ -104,6 +104,9 @@ connectingScreenHandleEvent ::
   EventM VibeMenuName (Next AppState)
 connectingScreenHandleEvent s = \case
   AppEvent EvConnected -> continue $ s & appScreenState .~ MainScreen initialMainScreenState
+  VtyEvent e -> case e of
+    V.EvKey V.KEsc [] -> halt s
+    V.EvKey (V.KChar 'q') [] -> halt s
   _ -> continue s
   where
     initialMainScreenState =

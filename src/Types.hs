@@ -27,6 +27,7 @@ module Types
     messageLog,
     devices,
     connectScreenState,
+    connectingScreenState,
     Command (..),
     BPSessionEvent (..),
     mkConnectForm,
@@ -136,6 +137,19 @@ connectScreenState = lens get set
       _ ->
         error
           "BUG: connectScreenState: tried to write ConnectForm to incorrect constructor field"
+
+connectingScreenState :: Lens' ScreenState BPWS.Connector
+connectingScreenState = lens get set
+  where
+    get = \case
+      ConnectingScreen connector -> connector
+      _ -> error "BUG: connectingScreenState: tried to get Connector from incorrect constructor"
+
+    set appState connector = case appState of
+      ConnectingScreen _ -> ConnectingScreen connector
+      _ ->
+        error
+          "BUG: connectingScreenState: tried to write Connector to incorrect constructor field"
 
 listAppend :: e -> L.List n e -> L.List n e
 listAppend elt l =
