@@ -16,11 +16,12 @@ import Brick.BChan
     readBChan,
     writeBChan,
   )
+import Buttplug.ButtplugM (ButtplugM)
+import Buttplug.ButtplugM qualified as ButtplugM
 import Buttplug.Core (Device (..), Vibrate (..), clientMessageVersion)
 import Buttplug.Core.Handle qualified as Buttplug
 import Buttplug.Core.WebSockets qualified as BPWS
-import ButtplugM (ButtplugM)
-import ButtplugM qualified
+import Buttplug.Message
 import Control.Monad (forever)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.STM (atomically)
@@ -33,6 +34,7 @@ import Data.Text.IO qualified as T
 import Graphics.Vty qualified as V
 import HandleBrickEvent (vibeMenuHandleEvent)
 import Ki.Unlifted (await, awaitAll, fork, scoped)
+import Lens.Micro ((^.))
 import Streamly.Data.Fold qualified as F
 import Streamly.Prelude (IsStream)
 import Streamly.Prelude qualified as S
@@ -40,7 +42,6 @@ import System.Environment (getArgs)
 import System.IO (stderr)
 import Types
   ( AppState (AppState),
-    appCmdChan,
     BPSessionEvent (..),
     ButtplugCommand (..),
     Command (..),
@@ -48,11 +49,10 @@ import Types
     ScreenState (ConnectScreen, ConnectingScreen),
     VibeMenuEvent (..),
     VibeMenuName,
+    appCmdChan,
     mkConnectForm,
   )
 import View (drawVibeMenu, theMap)
-import Lens.Micro ((^.))
-import Message
 
 vibeMenu ::
   Maybe BPWS.Connector ->

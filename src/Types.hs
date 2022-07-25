@@ -48,7 +48,7 @@ import Data.Text qualified as T
 import Data.Vector qualified as Vec
 import Lens.Micro (Lens', lens)
 import Lens.Micro.TH
-import Message
+import Buttplug.Message
 
 data HostPort = HostPort {_host :: Text, _port :: Int}
   deriving (Show, Eq)

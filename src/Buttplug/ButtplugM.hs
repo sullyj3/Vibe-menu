@@ -5,7 +5,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module ButtplugM where
+module Buttplug.ButtplugM where
 
 -- start with a concrete monad, we'll figure out how to do a transformer later
 
@@ -21,12 +21,10 @@ import Control.Monad.IO.Unlift
 import Control.Monad.Reader.Class
 import Control.Monad.Trans.Control
 import Control.Monad.Trans.Reader (ReaderT, runReaderT)
-import Message
+import Buttplug.Message
 
 -- TODO
--- Eventually we'll automatically handle giving messages correct message ids.
--- We'll present users with an api where they don't need to worry about id
--- We should also maintain a list of available devices, and allow users to request them directly
+-- We should maintain a list of available devices, and allow users to request them directly
 
 newtype ButtplugM a = ButtplugM {runButtplugM :: ReaderT (Handle, TVar Word) IO a}
   deriving newtype

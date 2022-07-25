@@ -2,7 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Message
+module Buttplug.Message
   ( Message (..),
     withMsgId,
     withoutMsgId,

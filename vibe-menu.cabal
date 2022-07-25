@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: f176ba15a8e23949aae964c40b235ff8f4b8d4b882cbc54b1ce0d0aa019ddb7b
+-- hash: e993809ce6f1f300dd72102bea7d9ccbda539989bef41e3294fad33aa025c39b
 
 name:           vibe-menu
 version:        0.1.0.0
@@ -27,9 +27,9 @@ source-repository head
 
 library
   exposed-modules:
-      ButtplugM
+      Buttplug.ButtplugM
+      Buttplug.Message
       HandleBrickEvent
-      Message
       Types
       View
   other-modules:
