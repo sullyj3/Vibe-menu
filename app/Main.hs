@@ -16,7 +16,7 @@ import Brick.BChan
     readBChan,
     writeBChan,
   )
-import Buttplug.Core (Device (..), Message (..), Vibrate (..), clientMessageVersion)
+import Buttplug.Core (Device (..), Vibrate (..), clientMessageVersion)
 import Buttplug.Core.Handle qualified as Buttplug
 import Buttplug.Core.WebSockets qualified as BPWS
 import ButtplugM (ButtplugM)
@@ -52,6 +52,7 @@ import Types
   )
 import View (drawVibeMenu, theMap)
 import Lens.Micro ((^.))
+import Message
 
 vibeMenu ::
   Maybe BPWS.Connector ->
@@ -140,20 +141,15 @@ sendReceiveBPMessages ::
   BChan ButtplugCommand ->
   ButtplugM ()
 sendReceiveBPMessages evChan buttplugCmdChan = do
-  servInfo <- handShake
+  servInfo <- ButtplugM.handshake
   emitBPEvent $ ReceivedMessage servInfo
-  ButtplugM.sendMessages [MsgRequestDeviceList 2, MsgStartScanning 3]
+  ButtplugM.sendMessages [MsgRequestDeviceList, MsgStartScanning]
   scoped \scope -> do
     -- Send events to the Brick UI
     _ <- fork scope emitEvents
     -- receive commands from the Brick UI
     handleCmds
   where
-    handShake = do
-      ButtplugM.sendMessage $ MsgRequestServerInfo 1 "VibeMenu" clientMessageVersion
-      [servInfo@(MsgServerInfo 1 _ _ _)] <- ButtplugM.receiveMessages
-      pure servInfo
-
     emitBPEvent = liftIO . writeBChan evChan . BPEvent
 
     emitEvents :: ButtplugM ()
@@ -169,7 +165,7 @@ sendReceiveBPMessages evChan buttplugCmdChan = do
 
     logErrors :: Message -> IO ()
     logErrors = \case
-      MsgError _ msg code -> T.hPutStrLn stderr $ displayBPErrorMsg msg code
+      MsgError msg code -> T.hPutStrLn stderr $ displayBPErrorMsg msg code
       _ -> pure ()
 
     -- TODO might be useful to have this in buttplug-hs-core
@@ -178,10 +174,10 @@ sendReceiveBPMessages evChan buttplugCmdChan = do
 -- forward messages from the UI to the buttplug server
 handleButtplugCommand :: ButtplugCommand -> ButtplugM ()
 handleButtplugCommand = \case
-  CmdStopAll -> ButtplugM.sendMessage $ MsgStopAllDevices 1
+  CmdStopAll -> ButtplugM.sendMessage $ MsgStopAllDevices
   CmdVibrate devIx speed ->
     ButtplugM.sendMessage $
-      MsgVibrateCmd 1 devIx [Vibrate 0 speed]
+      MsgVibrateCmd devIx [Vibrate 0 speed]
 
 -- Produces all messages that come in through a buttplug connection
 buttplugMessages :: IsStream t => t ButtplugM Message
@@ -202,7 +198,7 @@ toEvents msg =
     -- the unnecessary ones
     msgToBPSessionEvent :: Message -> Maybe BPSessionEvent
     msgToBPSessionEvent = \case
-      MsgDeviceAdded _ name ix devmsgs -> Just $ EvDeviceAdded $ Device name ix devmsgs
-      MsgDeviceRemoved _ ix -> Just $ EvDeviceRemoved ix
-      MsgDeviceList _ deviceList -> Just $ ReceivedDeviceList deviceList
+      MsgDeviceAdded name ix devmsgs -> Just $ EvDeviceAdded $ Device name ix devmsgs
+      MsgDeviceRemoved ix -> Just $ EvDeviceRemoved ix
+      MsgDeviceList deviceList -> Just $ ReceivedDeviceList deviceList
       _ -> Nothing

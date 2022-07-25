@@ -41,13 +41,14 @@ import Brick
 import Brick.BChan (BChan)
 import Brick.Forms (Form, editShowableField, editTextField, newForm, (@@=))
 import Brick.Widgets.List qualified as L
-import Buttplug.Core (Device (..), Message (..))
+import Buttplug.Core (Device (..))
 import Buttplug.Core.WebSockets qualified as BPWS
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector qualified as Vec
 import Lens.Micro (Lens', lens)
 import Lens.Micro.TH
+import Message
 
 data HostPort = HostPort {_host :: Text, _port :: Int}
   deriving (Show, Eq)

@@ -3,18 +3,23 @@
 {-# LANGUAGE RecordWildCards #-}
 
 module Message
-  ( Message,
-    Vibrate,
-    RawData,
-    LinearActuate,
-    Rotate,
+  ( Message (..),
     withMsgId,
+    withoutMsgId,
+    module Buttplug.Core.Message
   )
 where
 
 import Buttplug.Core.Device (Device)
 import Buttplug.Core.Device qualified as Dev
-import Buttplug.Core.Message (ErrorCode, LinearActuate, RawData, Rotate, Vibrate)
+import Buttplug.Core.Message
+  ( ErrorCode,
+    LinearActuate,
+    RawData,
+    Rotate,
+    Vibrate,
+    clientMessageVersion,
+  )
 import Buttplug.Core.Message qualified as CoreMsg
 import Data.ByteString (ByteString)
 import Data.Map (Map)
@@ -147,3 +152,37 @@ withMsgId msgId = \case
   MsgBatteryLevelReading {..} -> CoreMsg.MsgBatteryLevelReading {..}
   MsgRSSILevelCmd {..} -> CoreMsg.MsgRSSILevelCmd {..}
   MsgRSSILevelReading {..} -> CoreMsg.MsgRSSILevelReading {..}
+
+withoutMsgId :: CoreMsg.Message -> Message
+withoutMsgId = \case
+  CoreMsg.MsgOk {..} -> MsgOk 
+  CoreMsg.MsgError {..} -> MsgError {..} 
+  CoreMsg.MsgPing {..} -> MsgPing 
+  -- handshake messages
+  CoreMsg.MsgRequestServerInfo {..} -> MsgRequestServerInfo {..} 
+  CoreMsg.MsgServerInfo {..} -> MsgServerInfo {..} 
+  -- enumeration messages
+  CoreMsg.MsgStartScanning {..} -> MsgStartScanning 
+  CoreMsg.MsgStopScanning {..} -> MsgStopScanning 
+  CoreMsg.MsgScanningFinished {..} -> MsgScanningFinished 
+  CoreMsg.MsgRequestDeviceList {..} -> MsgRequestDeviceList 
+  CoreMsg.MsgDeviceList {..} -> MsgDeviceList {..} 
+  CoreMsg.MsgDeviceAdded {..} -> MsgDeviceAdded {..} 
+  CoreMsg.MsgDeviceRemoved {..} -> MsgDeviceRemoved {..} 
+  -- raw device messages
+  CoreMsg.MsgRawWriteCmd {..} -> MsgRawWriteCmd {..} 
+  CoreMsg.MsgRawReadCmd {..} -> MsgRawReadCmd {..} 
+  CoreMsg.MsgRawReading {..} -> MsgRawReading {..} 
+  CoreMsg.MsgRawSubscribeCmd {..} -> MsgRawSubscribeCmd {..} 
+  CoreMsg.MsgRawUnsubscribeCmd {..} -> MsgRawUnsubscribeCmd {..} 
+  -- generic device messages
+  CoreMsg.MsgStopDeviceCmd {..} -> MsgStopDeviceCmd {..} 
+  CoreMsg.MsgStopAllDevices {..} -> MsgStopAllDevices 
+  CoreMsg.MsgVibrateCmd {..} -> MsgVibrateCmd {..} 
+  CoreMsg.MsgLinearCmd {..} -> MsgLinearCmd {..} 
+  CoreMsg.MsgRotateCmd {..} -> MsgRotateCmd {..} 
+  -- generic sensor messages
+  CoreMsg.MsgBatteryLevelCmd {..} -> MsgBatteryLevelCmd {..} 
+  CoreMsg.MsgBatteryLevelReading {..} -> MsgBatteryLevelReading {..} 
+  CoreMsg.MsgRSSILevelCmd {..} -> MsgRSSILevelCmd {..} 
+  CoreMsg.MsgRSSILevelReading {..} -> MsgRSSILevelReading {..} 
