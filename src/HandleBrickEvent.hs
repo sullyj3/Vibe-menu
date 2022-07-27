@@ -25,7 +25,7 @@ import Brick.Forms
     setFieldValid,
   )
 import Brick.Widgets.List qualified as L
-import Buttplug.Core (Device (..))
+import Buttplug.Device (Device (..))
 import Control.Arrow ((>>>))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Char (digitToInt, isDigit)

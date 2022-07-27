@@ -36,7 +36,6 @@ library
       base >=4.7 && <5
     , brick
     , buttplug-hs
-    , buttplug-hs-core
     , bytestring
     , containers
     , exceptions
@@ -67,7 +66,6 @@ executable vibe-menu
       base >=4.7 && <5
     , brick
     , buttplug-hs
-    , buttplug-hs-core
     , bytestring
     , containers
     , exceptions
@@ -100,7 +98,6 @@ test-suite vibe-menu-test
       base >=4.7 && <5
     , brick
     , buttplug-hs
-    , buttplug-hs-core
     , bytestring
     , containers
     , exceptions

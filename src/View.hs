@@ -27,8 +27,8 @@ import Brick.Widgets.Border qualified as B
 import Brick.Widgets.Center qualified as C
 import Brick.Widgets.Edit qualified as E
 import Brick.Widgets.List qualified as L
-import Buttplug.Core (Device (..))
-import Buttplug.Core.WebSockets qualified as BPWS
+import Buttplug.Device (Device (..))
+import Buttplug.WebSockets qualified as BPWS
 import Data.Text qualified as T
 import Graphics.Vty qualified as V
 import Lens.Micro ((^.))

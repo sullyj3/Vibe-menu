@@ -18,9 +18,9 @@ import Brick.BChan
   )
 import Buttplug.ButtplugM (ButtplugM)
 import Buttplug.ButtplugM qualified as ButtplugM
-import Buttplug.Core (Device (..), Vibrate (..), clientMessageVersion)
-import Buttplug.Core.Handle qualified as Buttplug
-import Buttplug.Core.WebSockets qualified as BPWS
+import Buttplug.Device (Device (..))
+import Buttplug.Handle qualified as Buttplug
+import Buttplug.WebSockets qualified as BPWS
 import Buttplug.Message
 import Control.Monad (forever)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -132,9 +132,9 @@ connect connector buttplugCmdChan evChan = do
   putStrLn $
     "Connecting to: " <> connector.wsConnectorHost <> ":" <> show connector.wsConnectorPort
   -- TODO handle exceptions
-  BPWS.runClient connector \handle -> do
-    writeBChan evChan EvConnected
-    ButtplugM.runButtplug handle $ sendReceiveBPMessages evChan buttplugCmdChan
+  BPWS.runButtplugWebSockets connector do
+    liftIO $ writeBChan evChan EvConnected
+    sendReceiveBPMessages evChan buttplugCmdChan
 
 sendReceiveBPMessages ::
   BChan VibeMenuEvent ->

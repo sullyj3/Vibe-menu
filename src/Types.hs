@@ -41,8 +41,8 @@ import Brick
 import Brick.BChan (BChan)
 import Brick.Forms (Form, editShowableField, editTextField, newForm, (@@=))
 import Brick.Widgets.List qualified as L
-import Buttplug.Core (Device (..))
-import Buttplug.Core.WebSockets qualified as BPWS
+import Buttplug.Device (Device (..))
+import Buttplug.WebSockets qualified as BPWS
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Vector qualified as Vec
