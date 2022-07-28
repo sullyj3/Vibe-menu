@@ -132,7 +132,7 @@ connect connector buttplugCmdChan evChan = do
   putStrLn $
     "Connecting to: " <> connector.wsConnectorHost <> ":" <> show connector.wsConnectorPort
   -- TODO handle exceptions
-  BPWS.runButtplugWebSockets connector do
+  BPWS.runButtplugWebSockets "Vibe-menu" connector do
     liftIO $ writeBChan evChan EvConnected
     sendReceiveBPMessages evChan buttplugCmdChan
 
@@ -141,8 +141,6 @@ sendReceiveBPMessages ::
   BChan ButtplugCommand ->
   ButtplugM ()
 sendReceiveBPMessages evChan buttplugCmdChan = do
-  servInfo <- ButtplugM.handshake
-  emitBPEvent $ ReceivedMessage servInfo
   ButtplugM.sendMessages [MsgRequestDeviceList, MsgStartScanning]
   scoped \scope -> do
     -- Send events to the Brick UI
@@ -174,7 +172,7 @@ sendReceiveBPMessages evChan buttplugCmdChan = do
 -- forward messages from the UI to the buttplug server
 handleButtplugCommand :: ButtplugCommand -> ButtplugM ()
 handleButtplugCommand = \case
-  CmdStopAll -> ButtplugM.sendMessage $ MsgStopAllDevices
+  CmdStopAll -> ButtplugM.sendMessage MsgStopAllDevices
   CmdVibrate devIx speed ->
     ButtplugM.sendMessage $
       MsgVibrateCmd devIx [Vibrate 0 speed]

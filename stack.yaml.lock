@@ -21,11 +21,11 @@ packages:
     git: git@github.com:sullyj3/buttplug-hs.git
     pantry-tree:
       size: 759
-      sha256: dbfb761f57155659d562fd59b49e1bc157152ac4a28a1df413e5f3a944762a20
-    commit: a47d290bde502d0caa01adbc38ff3022158fc61b
+      sha256: 69328404705dd741368d636571f5b9de32bf64e6f21936fd063863ba9656a920
+    commit: 3c1a7d26dcaa549b00ce50cc9a684b66676b4e7d
   original:
     git: git@github.com:sullyj3/buttplug-hs.git
-    commit: a47d290bde502d0caa01adbc38ff3022158fc61b
+    commit: 3c1a7d26dcaa549b00ce50cc9a684b66676b4e7d
 snapshots:
 - completed:
     size: 617441
