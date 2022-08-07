@@ -53,6 +53,7 @@ import Types
     mkConnectForm,
   )
 import View (drawVibeMenu, theMap)
+import Data.Foldable
 
 vibeMenu ::
   Maybe BPWS.Connector ->
@@ -141,20 +142,18 @@ sendReceiveBPMessages ::
   BChan ButtplugCommand ->
   ButtplugM ()
 sendReceiveBPMessages evChan buttplugCmdChan = do
+  -- Send events to the Brick UI
+  ButtplugM.addMessageReceivedHandler handleIncomingMessage
   ButtplugM.sendMessages [MsgRequestDeviceList, MsgStartScanning]
-  scoped \scope -> do
-    -- Send events to the Brick UI
-    _ <- fork scope emitEvents
-    -- receive commands from the Brick UI
-    handleCmds
+  -- receive commands from the Brick UI
+  handleCmds
   where
-    emitBPEvent = liftIO . writeBChan evChan . BPEvent
+    handleIncomingMessage msg = do
+      liftIO $ logErrors msg
+      traverse_ emitBPEvent $ toEvents msg
 
-    emitEvents :: ButtplugM ()
-    emitEvents =
-      S.mapM_ emitBPEvent $
-        S.concatMap (S.fromFoldable . toEvents) $
-          S.trace (liftIO . logErrors) buttplugMessages
+    emitBPEvent :: BPSessionEvent -> ButtplugM ()
+    emitBPEvent = liftIO . writeBChan evChan . BPEvent
 
     handleCmds :: ButtplugM ()
     handleCmds =
@@ -176,12 +175,6 @@ handleButtplugCommand = \case
   CmdVibrate devIx speed ->
     ButtplugM.sendMessage $
       MsgVibrateCmd devIx [Vibrate 0 speed]
-
--- Produces all messages that come in through a buttplug connection
-buttplugMessages :: IsStream t => t ButtplugM Message
-buttplugMessages =
-  S.concatMap S.fromFoldable $
-    S.repeatM ButtplugM.receiveMessages
 
 -- We notify the UI of every message so it can display them, but also
 -- translate messages into simplified events
